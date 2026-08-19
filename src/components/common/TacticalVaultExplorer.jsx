@@ -1226,8 +1226,43 @@ const TacticalVaultExplorer = ({
       </div>
 
       {/* ── 3-Column Main Layout ── */}
-      <div className="flex h-[calc(100vh-8.5rem)]">
+      <div className="flex h-[calc(100vh-8.5rem)] relative">
         
+        {/* ── Tactical Ribbed Tab (Bordázott Fül) Sidebar Toggle Handle ── */}
+        <button
+          type="button"
+          onClick={() => setSidebarOpen((v) => !v)}
+          className={`
+            fixed z-30 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center
+            w-6 sm:w-7 py-3 transition-all duration-300 cursor-pointer select-none
+            border-2 border-slate-900 dark:border-neonCyan shadow-[3px_3px_0_#0f172a]
+            dark:bg-[#070b19] bg-slate-900 text-white dark:text-neonCyan
+            hover:dark:bg-neonCyan hover:dark:text-black hover:bg-neonCyan hover:text-black
+            hover:shadow-[-3px_0_12px_#00FFFF,3px_0_12px_#FF00FF] rounded-none group
+            ${sidebarOpen ? 'left-72 sm:left-84 border-l-0' : 'left-0 border-l-0'}
+          `}
+          title={sidebarOpen ? "Oldalsáv elrejtése" : "Oldalsáv kinyitása"}
+          aria-label={sidebarOpen ? "Oldalsáv elrejtése" : "Oldalsáv kinyitása"}
+        >
+          {/* Chevron Indicator */}
+          <span className="text-[10px] font-mono font-black transition-transform duration-300 group-hover:scale-125">
+            {sidebarOpen ? '◀' : '▶'}
+          </span>
+
+          {/* Tactile Ribbed Grip Ridges (Bordázat) */}
+          <div className="flex flex-col gap-[3px] items-center justify-center my-1.5 pointer-events-none">
+            <span className="w-3.5 h-[2px] bg-neonCyan group-hover:bg-black dark:group-hover:bg-black transition-colors rounded-none shadow-[0_0_4px_#00FFFF]" />
+            <span className="w-3.5 h-[2px] bg-neonCyan group-hover:bg-black dark:group-hover:bg-black transition-colors rounded-none shadow-[0_0_4px_#00FFFF]" />
+            <span className="w-3.5 h-[2px] bg-neonCyan group-hover:bg-black dark:group-hover:bg-black transition-colors rounded-none shadow-[0_0_4px_#00FFFF]" />
+            <span className="w-3.5 h-[2px] bg-neonCyan group-hover:bg-black dark:group-hover:bg-black transition-colors rounded-none shadow-[0_0_4px_#00FFFF]" />
+          </div>
+
+          {/* Vertical Tactile Label */}
+          <span className="font-mono text-[7px] font-black uppercase tracking-tighter [writing-mode:vertical-lr] text-slate-400 group-hover:text-black transition-colors select-none">
+            {sidebarOpen ? 'ZÁR' : 'NYIT'}
+          </span>
+        </button>
+
         {/* ───────────────────────────────────────────────────────────── */}
         {/* 1. BAL SÁV: FASTUKTÚRA & GYORSKERESŐ                           */}
         {/* ───────────────────────────────────────────────────────────── */}
