@@ -24,12 +24,91 @@ import CyberSEO from '../common/CyberSEO';
 // ============================================================================
 const MCP_CONFIGS = {
   claudeDesktop: {
-    title: 'Claude Desktop (Nyilvános Keresés)',
+    title: 'Claude Desktop (Távoli SSE - Ajánlott)',
     filename: 'claude_desktop_config.json',
-    description: 'Nyisd meg a Claude Desktop beállításait és illeszd be az `mcpServers` blokkba. Hitelesítés nélkül azonnal biztosítja a keresést.',
+    description: 'Nyisd meg a Claude Desktop beállításait és illeszd be az `mcpServers` blokkba. Nem igényel helyi kódot vagy telepítést, közvetlenül csatlakozik az élő https://ai.szantoi.hu szerverhez.',
     code: `{
   "mcpServers": {
-    "cyber-architect-public": {
+    "szantoi-cyber-architect": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://ai.szantoi.hu/api/sse"
+      ]
+    }
+  }
+}`
+  },
+  cursor: {
+    title: 'Cursor IDE (Natív SSE Kapcsolat)',
+    filename: '.cursor/mcp.json',
+    description: 'A Cursor projekt gyökerében vagy a globális Cursor MCP beállításaiban illeszd be a távoli SSE végpontot:',
+    code: `{
+  "mcpServers": {
+    "szantoi-cyber-architect": {
+      "url": "https://ai.szantoi.hu/api/sse"
+    }
+  }
+}`
+  },
+  claudeCode: {
+    title: 'Claude Code (1-Parancsos CLI)',
+    filename: 'Terminál parancs',
+    description: 'Futtasd le ezt az egyetlen parancsot a terminálodban a távoli MCP szerver azonnali regisztrálásához:',
+    code: `claude mcp add szantoi-cyber-architect -- npx -y mcp-remote https://ai.szantoi.hu/api/sse`
+  },
+  windsurf: {
+    title: 'Windsurf / Roo Code',
+    filename: 'mcp_settings.json',
+    description: 'Illeszd be a Windsurf Cascade vagy Roo Code MCP konfigurációs fájljába az automatikus eszközengedélyezéssel:',
+    code: `{
+  "mcpServers": {
+    "szantoi-cyber-architect": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://ai.szantoi.hu/api/sse"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "search_knowledge",
+        "get_knowledge_article",
+        "list_projects",
+        "list_blog_posts"
+      ]
+    }
+  }
+}`
+  },
+  adminAgent: {
+    title: 'Saját Autentikált Ágens (Írás / Módosítás)',
+    filename: 'claude_desktop_config.json (Admin)',
+    description: 'Saját belső vagy CI/CD ágens hitelesítése: a `PORTFOLIO_API_KEY` megadásával engedélyezi az új cikkek feltöltését és a szerkesztést.',
+    code: `{
+  "mcpServers": {
+    "szantoi-cyber-architect-admin": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://ai.szantoi.hu/api/sse"
+      ],
+      "env": {
+        "PORTFOLIO_API_KEY": "sajat_titkos_admin_api_kulcsod"
+      }
+    }
+  }
+}`
+  },
+  localClone: {
+    title: 'Helyi / Git Klón (Offline Node)',
+    filename: 'Lokális Stdio Futtatás',
+    description: 'Ha a repót a saját gépedre klónoztad (github.com/Szantoi/cyber-architect), helyi folyamatként is futtathatod:',
+    code: `{
+  "mcpServers": {
+    "cyber-architect-local": {
       "command": "node",
       "args": [
         "server/mcp/server.js"
@@ -38,65 +117,15 @@ const MCP_CONFIGS = {
   }
 }`
   },
-  adminAgent: {
-    title: 'Saját Autentikált Ágens (Írás / Szerkesztés)',
-    filename: 'claude_desktop_config.json (Admin)',
-    description: 'Saját belső vagy CI/CD ágens hitelesítése: a `PORTFOLIO_API_KEY` megadásával engedélyezi a cikkfeltöltést és szerkesztést.',
-    code: `{
-  "mcpServers": {
-    "cyber-architect-admin": {
-      "command": "node",
-      "args": [
-        "server/mcp/server.js"
-      ],
-      "env": {
-        "PORTFOLIO_API_KEY": "sajat_titkos_admin_kulcsod"
-      }
-    }
-  }
-}`
-  },
-  claudeCode: {
-    title: 'Claude Code (CLI)',
-    filename: 'Terminál parancs',
-    description: 'Futtasd le ezt a parancsot a terminálodban az MCP szerver azonnali regisztrálásához:',
-    code: `claude mcp add cyber-architect -- node server/mcp/server.js`
-  },
-  cursor: {
-    title: 'Cursor IDE',
-    filename: '.cursor/mcp.json',
-    description: 'A Cursor projekt gyökerében vagy a globális Cursor MCP beállításaiban:',
-    code: `{
-  "mcpServers": {
-    "cyber-architect": {
-      "command": "node",
-      "args": ["server/mcp/server.js"]
-    }
-  }
-}`
-  },
-  windsurf: {
-    title: 'Windsurf / Roo Code',
-    filename: 'mcp_settings.json',
-    description: 'Illeszd be a Windsurf Cascade vagy Roo Code MCP konfigurációs fájljába:',
-    code: `{
-  "mcpServers": {
-    "szantoi-cyber-architect": {
-      "command": "node",
-      "args": ["server/mcp/server.js"],
-      "disabled": false,
-      "autoApprove": ["search_knowledge", "get_knowledge_article", "list_projects"]
-    }
-  }
-}`
-  },
   promptInjection: {
     title: 'AI Prompt / Rendszerutasítás',
     filename: 'System Prompt Snippet',
-    description: 'Ha bármilyen AI ágensnek csak az oldal linkjét adod meg, másold be ezt a szöveget a promptjába:',
+    description: 'Ha bármilyen AI ágensnek (ChatGPT, Claude, DeepSeek) közvetlenül szeretnéd megadni az elérési utakat:',
     code: `Csatlakozz Szántói Gábor mérnöki és tudásbázis platformjához a Model Context Protocol (MCP) segítségével!
-MCP Manifest & Tools végpont: https://www.ai.szantoi.hu/api/mcp/manifest és https://www.ai.szantoi.hu/api/mcp/tools
-Használd a 'search_knowledge' eszközt a műszaki tudástár lekérdezéséhez és a 'list_projects' eszközt a mérnöki repók megtekintéséhez.`
+Éles MCP Manifest: https://ai.szantoi.hu/api/mcp/manifest
+Éles SSE Stream: https://ai.szantoi.hu/api/sse
+Eszközkatalógus: https://ai.szantoi.hu/api/mcp/tools
+Használd a 'search_knowledge' eszközt a műszaki tudástár lekérdezéséhez és a 'list_projects' eszközt a mérnöki projektek és technológiai stacket megtekintéséhez.`
   }
 };
 
