@@ -313,8 +313,8 @@ adminRouter.delete('/admin/messages/:id', authMiddleware, (req, res) => {
   }
 });
 
-// 8. Update PIN
-adminRouter.put('/admin/pin', authMiddleware, validateBody(updatePinSchema), (req, res) => {
+// 8. Update PIN (Aliases: /admin/pin, /admin/security/pin)
+const updatePinHandler = (req, res) => {
   try {
     const { pin } = req.body;
     dbService.updatePin(pin, 'ADMIN_DASHBOARD');
@@ -324,7 +324,9 @@ adminRouter.put('/admin/pin', authMiddleware, validateBody(updatePinSchema), (re
     logger.error('Failed to update PIN', err);
     res.status(500).json({ error: err.message || 'UPDATE_FAILED' });
   }
-});
+};
+adminRouter.put('/admin/pin', authMiddleware, validateBody(updatePinSchema), updatePinHandler);
+adminRouter.put('/admin/security/pin', authMiddleware, validateBody(updatePinSchema), updatePinHandler);
 
 // 9. Audit Trail Logs & Rollback
 adminRouter.get('/admin/audit', authMiddleware, (req, res) => {

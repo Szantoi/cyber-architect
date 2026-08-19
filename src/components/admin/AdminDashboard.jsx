@@ -243,11 +243,12 @@ const AdminDashboard = () => {
 
   const handleConnectDrive = async () => {
     try {
-      const res = await adminFetch('/api/sync/drive/auth-url');
+      const res = await adminFetch('/api/admin/drive/auth-url');
       if (res.ok) {
         const data = await res.json();
-        if (data.authUrl) {
-          window.location.href = data.authUrl;
+        const url = data.auth_url || data.authUrl;
+        if (url) {
+          window.location.href = url;
         } else {
           showNotify('NEM_SIKERÜLT_GENERÁLNI_AZ_AUTH_URL-T', true);
         }
@@ -263,11 +264,12 @@ const AdminDashboard = () => {
     setIsSyncing(true);
     setSyncResult(null);
     try {
-      const res = await adminFetch('/api/sync/drive', { method: 'POST' });
+      const res = await adminFetch('/api/admin/drive/sync', { method: 'POST' });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setSyncResult(data.report);
-        showNotify(`DRIVE_SZINKRONIZÁCIÓ_SIKERES: ${data.report.synced} fájl (${data.report.created} új, ${data.report.updated} frissítve)`);
+      const report = data.report || data;
+      if (res.ok && (data.success || report.synced !== undefined)) {
+        setSyncResult(report);
+        showNotify(`DRIVE_SZINKRONIZÁCIÓ_SIKERES: ${report.synced || 0} fájl (${report.created || 0} új, ${report.updated || 0} frissítve)`);
         loadAdminData();
       } else {
         showNotify(`SZINKRONIZÁCIÓS_HIBA: ${data.error || data.message || 'Ismeretlen hiba'}`, true);

@@ -9,7 +9,7 @@ const CyberSEO = ({
   title = 'Szántói Gábor // Mérnöki Folyamatautomatizálás & AI Integráció',
   description = 'Mérnöki szemléletű folyamatfejlesztő és AI integrátor. Szigetrendszerek összekötése, manuális adminisztráció kiváltása és zárt belső AI megoldások.',
   type = 'website',
-  url = typeof window !== 'undefined' ? window.location.href : 'https://szantoi.hu',
+  url = typeof window !== 'undefined' ? window.location.href : (import.meta.env.VITE_SITE_URL || 'https://www.ai.szantoi.hu'),
   image = 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=1000&auto=format&fit=crop',
   structuredData = null
 }) => {

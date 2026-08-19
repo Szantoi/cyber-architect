@@ -39,7 +39,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
-      connectSrc: ["'self'", 'ws:', 'wss:', 'https://szantoi.hu', 'http://localhost:5173', 'http://localhost:3000'],
+      connectSrc: ["'self'", 'ws:', 'wss:', ...config.allowedOrigins],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
     }
@@ -48,21 +48,12 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
-// Cross-Origin Resource Sharing (Restricted to Trusted Origins & Dev)
-const allowedOrigins = [
-  'https://szantoi.hu',
-  'https://www.szantoi.hu',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:3000'
-];
-
+// Cross-Origin Resource Sharing (Restricted to Configured Whitelist & Local Dev)
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (e.g. mobile apps, curl, MCP stdio/local CLI)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+    if (config.allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
     return callback(new Error('CORS_ORIGIN_BLOCKED: Cross-Origin Request Blocked by Security Policy'));

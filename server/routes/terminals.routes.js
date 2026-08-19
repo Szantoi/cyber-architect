@@ -62,6 +62,20 @@ terminalsRouter.put('/admin/agent-messages/:id/status', authMiddleware, (req, re
   }
 });
 
+terminalsRouter.delete('/admin/agent-messages/:id', authMiddleware, (req, res) => {
+  try {
+    const deleted = dbService.deleteAgentMessage(req.params.id, 'ADMIN_DASHBOARD');
+    if (!deleted) {
+      return res.status(404).json({ error: 'MESSAGE_NOT_FOUND' });
+    }
+    logger.info(`Agent message #${req.params.id} deleted from inbox`);
+    res.json({ success: true, message: 'MESSAGE_DELETED', data: deleted });
+  } catch (err) {
+    logger.error(`Failed to delete agent message #${req.params.id}`, err);
+    res.status(500).json({ error: err.message || 'DELETE_FAILED' });
+  }
+});
+
 // 2. Organizational Matrix & Terminal Management
 terminalsRouter.get('/admin/terminals', authMiddleware, (req, res) => {
   try {

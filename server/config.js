@@ -27,5 +27,11 @@ export const config = {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 mins
     maxAuth: parseInt(process.env.RATE_LIMIT_MAX_AUTH || '5', 10),
     maxUplink: parseInt(process.env.RATE_LIMIT_MAX_UPLINK || '5', 10),
-  }
+  },
+
+  siteUrl: process.env.SITE_URL || 'https://www.ai.szantoi.hu',
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || 'https://www.ai.szantoi.hu,https://ai.szantoi.hu,https://szantoi.hu,https://www.szantoi.hu,http://localhost:5173,http://localhost:3000,http://localhost:3001,http://127.0.0.1:5173,http://127.0.0.1:3000')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
 };

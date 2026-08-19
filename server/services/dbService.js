@@ -1563,6 +1563,20 @@ export const dbService = {
     `).all(l);
   },
 
+  deleteAgentMessage(id, actor = 'ADMIN_DASHBOARD') {
+    const existing = db.prepare('SELECT * FROM agent_messages WHERE id = ?').get(id);
+    if (!existing) return null;
+    db.prepare('DELETE FROM agent_messages WHERE id = ?').run(id);
+    this.recordAudit({
+      action: 'DELETE',
+      entity_type: 'AGENT_MESSAGE',
+      entity_id: String(id),
+      details: { sender: existing.sender, recipient: existing.recipient, subject: existing.subject },
+      actor
+    });
+    return existing;
+  },
+
   // ==========================================
   // 9. ORGANIZATIONAL MATRIX & TERMINAL MANAGEMENT
   // ==========================================

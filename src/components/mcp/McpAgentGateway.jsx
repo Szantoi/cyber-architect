@@ -32,7 +32,7 @@ const MCP_CONFIGS = {
     "cyber-architect-public": {
       "command": "node",
       "args": [
-        "c:/Users/szant/Documents/Development/szantoi/CyberArchitectReact/server/mcp/server.js"
+        "server/mcp/server.js"
       ]
     }
   }
@@ -47,7 +47,7 @@ const MCP_CONFIGS = {
     "cyber-architect-admin": {
       "command": "node",
       "args": [
-        "c:/Users/szant/Documents/Development/szantoi/CyberArchitectReact/server/mcp/server.js"
+        "server/mcp/server.js"
       ],
       "env": {
         "PORTFOLIO_API_KEY": "sajat_titkos_admin_kulcsod"
@@ -60,7 +60,7 @@ const MCP_CONFIGS = {
     title: 'Claude Code (CLI)',
     filename: 'Terminál parancs',
     description: 'Futtasd le ezt a parancsot a terminálodban az MCP szerver azonnali regisztrálásához:',
-    code: `claude mcp add cyber-architect -- node c:/Users/szant/Documents/Development/szantoi/CyberArchitectReact/server/mcp/server.js`
+    code: `claude mcp add cyber-architect -- node server/mcp/server.js`
   },
   cursor: {
     title: 'Cursor IDE',
@@ -70,7 +70,7 @@ const MCP_CONFIGS = {
   "mcpServers": {
     "cyber-architect": {
       "command": "node",
-      "args": ["c:/Users/szant/Documents/Development/szantoi/CyberArchitectReact/server/mcp/server.js"]
+      "args": ["server/mcp/server.js"]
     }
   }
 }`
@@ -83,7 +83,7 @@ const MCP_CONFIGS = {
   "mcpServers": {
     "szantoi-cyber-architect": {
       "command": "node",
-      "args": ["c:/Users/szant/Documents/Development/szantoi/CyberArchitectReact/server/mcp/server.js"],
+      "args": ["server/mcp/server.js"],
       "disabled": false,
       "autoApprove": ["search_knowledge", "get_knowledge_article", "list_projects"]
     }
@@ -95,7 +95,7 @@ const MCP_CONFIGS = {
     filename: 'System Prompt Snippet',
     description: 'Ha bármilyen AI ágensnek csak az oldal linkjét adod meg, másold be ezt a szöveget a promptjába:',
     code: `Csatlakozz Szántói Gábor mérnöki és tudásbázis platformjához a Model Context Protocol (MCP) segítségével!
-MCP Manifest & Tools végpont: http://localhost:3000/api/mcp/manifest és http://localhost:3000/api/mcp/tools
+MCP Manifest & Tools végpont: https://www.ai.szantoi.hu/api/mcp/manifest és https://www.ai.szantoi.hu/api/mcp/tools
 Használd a 'search_knowledge' eszközt a műszaki tudástár lekérdezéséhez és a 'list_projects' eszközt a mérnöki repók megtekintéséhez.`
   }
 };

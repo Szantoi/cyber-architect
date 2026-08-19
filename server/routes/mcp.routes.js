@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { dbService } from '../services/dbService.js';
 import { logger } from '../logger.js';
+import { config } from '../config.js';
 
 export const mcpRouter = Router();
 
 // 1. Agent Discovery Manifest
 mcpRouter.get('/manifest', (req, res) => {
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = req.get('host') ? `${req.protocol}://${req.get('host')}` : config.siteUrl;
   
   res.json({
     name: 'cyber-architect-portfolio-mcp',
@@ -14,7 +15,7 @@ mcpRouter.get('/manifest', (req, res) => {
     description: 'Szántói Gábor // Cyber-Architect Model Context Protocol (MCP) Server & Knowledge Engine',
     protocol_version: '2024-11-05',
     author: 'Szántói Gábor',
-    website: 'https://szantoi.hu',
+    website: config.siteUrl,
     server_transport: {
       stdio: {
         command: 'node',
