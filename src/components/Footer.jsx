@@ -2,7 +2,7 @@ import React from 'react';
 
 const Footer = () => {
   return (
-    <footer className="w-full py-12 px-8 flex flex-col md:flex-row justify-between items-start border-t dark:border-white/10 border-t-2 border-slate-900 dark:bg-[#090d1d] bg-[#cad4e2] transition-colors duration-200 rounded-none">
+    <footer className="w-full py-12 pb-28 md:pb-12 px-8 flex flex-col md:flex-row justify-between items-start border-t dark:border-white/10 border-t-2 border-slate-900 dark:bg-[#090d1d] bg-[#cad4e2] transition-colors duration-200 rounded-none">
       <div className="mb-8 md:mb-0">
         <div className="text-sm font-black dark:text-neonCyan text-slate-950 font-headline mb-2 tracking-[0.2em] uppercase italic">SZÁNTOI GÁBOR // AI & FOLYAMATAUTOMATIZÁCIÓ</div>
         <p className="font-mono text-[10px] uppercase tracking-[0.4em] dark:text-slate-500 text-slate-700 font-bold">© 2026 SZÁNTOI GÁBOR // MINDEN JOG FENNTARTVA // BUDAPEST</p>
