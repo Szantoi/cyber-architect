@@ -1,0 +1,127 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import { config } from './config.js';
+import { logger } from './logger.js';
+import { dbService } from './services/dbService.js';
+import { dbMaintenance } from './services/dbMaintenance.js';
+import { apiLimiter } from './security/rateLimiter.js';
+import { validateEnv } from './config/envValidator.js';
+import { notFoundHandler, globalErrorHandler } from './middleware/errorHandler.js';
+import { correlationId } from './middleware/correlationId.js';
+
+// Modular Route Handlers
+import { contentRouter } from './routes/content.routes.js';
+import { blogRouter } from './routes/blog.routes.js';
+import { knowledgeRouter } from './routes/knowledge.routes.js';
+import { uplinkRouter } from './routes/uplink.routes.js';
+import { adminRouter } from './routes/admin.routes.js';
+import { terminalsRouter } from './routes/terminals.routes.js';
+import { syncRouter } from './routes/sync.routes.js';
+import { healthRouter } from './routes/health.routes.js';
+import { sseRouter } from './routes/sse.routes.js';
+import { mcpRouter } from './routes/mcp.routes.js';
+
+// Validate environment variables on boot
+validateEnv();
+
+export const app = express();
+const PORT = config.port;
+
+logger.success('SQLite Database initialized and ready (WAL mode enabled)');
+
+// HTTP Security Headers (Helmet)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // For React Vite builds and diagrams
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
+      connectSrc: ["'self'", 'ws:', 'wss:', 'https://szantoi.hu', 'http://localhost:5173', 'http://localhost:3000'],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
+// Cross-Origin Resource Sharing (Restricted to Trusted Origins & Dev)
+const allowedOrigins = [
+  'https://szantoi.hu',
+  'https://www.szantoi.hu',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000'
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, MCP stdio/local CLI)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS_ORIGIN_BLOCKED: Cross-Origin Request Blocked by Security Policy'));
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Correlation-ID'],
+  credentials: true
+}));
+
+// Request Body Parser with 1MB Size Limit (DoS Prevention)
+app.use(express.json({ limit: '1mb' }));
+
+// Request Correlation ID (X-Request-ID)
+app.use(correlationId);
+
+// Global Request Logger Middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (req.originalUrl.startsWith('/api/')) {
+      logger.info(`${req.method} ${req.originalUrl} [${res.statusCode}] (${duration}ms) [requestId=${req.id}]`, { ip: req.ip, requestId: req.id });
+    }
+  });
+  next();
+});
+
+// Global API Rate Limiter
+app.use('/api/', apiLimiter);
+
+// Mount Modular API Routers
+app.use('/api', contentRouter);
+app.use('/api', blogRouter);
+app.use('/api', knowledgeRouter);
+app.use('/api', uplinkRouter);
+app.use('/api', adminRouter);
+app.use('/api', terminalsRouter);
+app.use('/api', syncRouter);
+app.use('/api', healthRouter);
+app.use('/api', sseRouter);
+app.use('/api/mcp', mcpRouter);
+
+// Catch Unhandled API Routes (404)
+app.use('/api', notFoundHandler);
+
+// Global Error Handler Middleware (500)
+app.use(globalErrorHandler);
+
+// Initial Workspace Sync
+try {
+  dbService.syncExistingTerminals();
+} catch (syncErr) {
+  logger.warn('Initial terminal sync warning:', syncErr);
+}
+
+// Start listening if executed directly
+if (process.env.NODE_ENV !== 'test') {
+  dbMaintenance.startPeriodicMaintenance();
+  app.listen(PORT, () => {
+    logger.success(`[CYBER_CORE_SERVER] Backend API running on port ${PORT} [${config.nodeEnv.toUpperCase()}]`);
+  });
+}

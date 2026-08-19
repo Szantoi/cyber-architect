@@ -1,0 +1,279 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+:root, .dark {
+  --bg-main: #090d1d;
+  --surface-main: #0d1226;
+  --surface-subtle: #121832;
+  --surface-container: #151b38;
+  --surface-container-high: #1c2348;
+  --surface-container-highest: #232c58;
+  --text-main: #dfe1f8;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --border-main: rgba(255, 255, 255, 0.15);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --neon-cyan: #00fbfb;
+  --neon-magenta: #ff00ff;
+  --plasma-green: #80ff00;
+  --card-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  background-color: var(--bg-main);
+  color: var(--text-main);
+}
+
+.light {
+  /* Tactical Blueprint Slate - szemkímélő ipari mérnöki pala, nincs vakító fehér! */
+  --bg-main: #d4dce8;
+  --surface-main: #e2e9f3;
+  --surface-subtle: #cad4e2;
+  --surface-container: #bcc8d8;
+  --surface-container-high: #abb9cc;
+  --surface-container-highest: #8b9cb3;
+  --text-main: #070a12;
+  --text-muted: #1e293b;
+  --text-dim: #334155;
+  /* Határozott, kontrasztos fekete/sötétkék ipari kontúrok */
+  --border-main: #0f172a;
+  --border-subtle: rgba(15, 23, 42, 0.35);
+  --neon-cyan: #0369a1;
+  --neon-magenta: #9333ea;
+  --plasma-green: #15803d;
+  --card-shadow: 3px 3px 0 #0f172a;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Gombok és kártyák kontrasztos ipari kontúrja világos módban */
+.light button, 
+.light a.border, 
+.light input, 
+.light select, 
+.light textarea {
+  border-color: var(--border-main);
+}
+
+.light input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+.light textarea,
+.light select {
+  background-color: #f8fafc;
+  color: #070a12;
+  border-color: #0f172a;
+}
+
+.light input:focus,
+.light textarea:focus,
+.light select:focus {
+  border-color: #0369a1;
+  outline: none;
+}
+
+.light input::placeholder,
+.light textarea::placeholder {
+  color: #64748b;
+}
+
+.light label {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.light h1, .light h2, .light h3, .light h4, .light h5, .light h6 {
+  color: #070a12;
+}
+
+.light .text-slate-400,
+.light .text-slate-500 {
+  color: #1e293b;
+}
+
+.light .text-slate-300 {
+  color: #0f172a;
+}
+
+.light .bg-surface-container-lowest {
+  background-color: var(--surface-main);
+  border-color: #0f172a;
+}
+
+.light .shadow-sm {
+  box-shadow: 2px 2px 0 #0f172a;
+}
+
+.light .shadow-md,
+.light .shadow-2xl {
+  box-shadow: 4px 4px 0 #0f172a;
+}
+
+/* Advanced CRT Scanline Effect */
+.scanlines {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 0, 0, 0.25) 50%
+  ),
+  linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.06),
+    rgba(0, 255, 0, 0.02),
+    rgba(0, 0, 255, 0.06)
+  );
+  background-size: 100% 4px, 3px 100%;
+  pointer-events: none;
+  z-index: 200;
+  opacity: 0.15;
+}
+
+.light .scanlines {
+  display: none;
+}
+
+.glitch-text {
+  text-shadow: 0 0 12px rgba(0, 251, 251, 0.25);
+  position: relative;
+}
+
+.light .glitch-text {
+  text-shadow: none;
+}
+
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuAKhifCHJR0McK7rKewDcU2JZOvBABouAHjZ2PlKNimSI78uyc6_AM3f3dnZpevwrXOKvQaRUe-ePYAGihXlJk2m3onhy3v7U1EF36EaVzFwVKXMn59txxGZOqKby6-ACRyAN7kkgRwJdU9IgzPlNfgSAfBcQtd22ywIWoS9QrT-2BoK4X_prCZHHKn8Nj75JbbaVMyLbgOrZPodk5zwFseW_TSf5YCSCwEyaF_-mQFBcttbIKbfw8L4BGDoBZ1_E0VT1-s2BdzVC0);
+  opacity: 0.04;
+  pointer-events: none;
+  z-index: 150;
+  mix-blend-mode: overlay;
+}
+
+.light .grain-overlay {
+  opacity: 0.01;
+}
+
+.wireframe-grid {
+  background-image: 
+    linear-gradient(to right, rgba(0, 251, 251, 0.03) 1px, transparent 1px), 
+    linear-gradient(to bottom, rgba(0, 251, 251, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+.light .wireframe-grid {
+  background-image: 
+    linear-gradient(to right, rgba(15, 23, 42, 0.08) 1px, transparent 1px), 
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.08) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+
+/* Blueprint Grid for Light Mode */
+.blueprint-grid {
+  background-image: 
+    linear-gradient(to right, rgba(3, 105, 161, 0.12) 1px, transparent 1px), 
+    linear-gradient(to bottom, rgba(3, 105, 161, 0.12) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.terminal-glow {
+  filter: drop-shadow(0 0 5px rgba(0, 251, 251, 0.3));
+}
+
+.light .terminal-glow {
+  filter: none;
+}
+
+@keyframes flicker {
+  0% { opacity: 0.97; }
+  5% { opacity: 0.95; }
+  10% { opacity: 0.9; }
+  15% { opacity: 0.93; }
+  20% { opacity: 0.98; }
+  25% { opacity: 0.95; }
+  30% { opacity: 0.9; }
+  100% { opacity: 1; }
+}
+
+.animate-flicker {
+  animation: flicker 0.15s infinite;
+}
+
+.light .animate-flicker {
+  animation: none;
+}
+
+.vertical-text {
+  writing-mode: vertical-rl;
+}
+
+/* Custom Industrial Utilities */
+.corner-bracket-tl, .corner-bracket-br {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.corner-bracket-tl {
+  top: 10px;
+  left: 10px;
+  border-top: 2px solid currentColor;
+  border-left: 2px solid currentColor;
+}
+
+.corner-bracket-br {
+  bottom: 10px;
+  right: 10px;
+  border-bottom: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: #64748b;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-cyan);
+}
+
+/* Background Noise Overlay */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+.light .noise-overlay {
+  opacity: 0.01;
+}

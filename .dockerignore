@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.github
+.husky
+playwright-report
+test-results
+data/*.sqlite-shm
+data/*.sqlite-wal
+data/backups
+coverage
+*.log

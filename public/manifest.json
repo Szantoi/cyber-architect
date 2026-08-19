@@ -1,0 +1,17 @@
+{
+  "name": "SZÁNTOI GÁBOR // CYBER-ARCHITECT",
+  "short_name": "SZANTOI // AI",
+  "description": "Mérnöki szemléletű folyamatfejlesztő és AI integrátor portfólió & műszaki tudástár.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d1d",
+  "theme_color": "#00FFFF",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

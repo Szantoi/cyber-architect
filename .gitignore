@@ -1,0 +1,74 @@
+# =============================================================================
+# 🔒 CYBER-ARCHITECT REACT APP .GITIGNORE
+# =============================================================================
+
+# 1. Environment & Secrets
+.env
+.env.*
+*.env
+*.env.local
+*.env.production
+*.env.development
+!.env.example
+
+# Service Accounts & Keys
+*credentials*.json
+*client_secret*.json
+*service-account*.json
+*service_account*.json
+*google*.json
+*drive-tokens*.json
+token.json
+tokens.json
+server/config/*.json
+*.pem
+*.key
+*.cert
+*.pfx
+
+# 2. SQLite Databases & WAL files
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+server/*.db*
+server/data/*.db*
+server/data/*.sqlite*
+data/
+backups/
+
+# 3. Dependencies & Builds
+node_modules/
+dist/
+dist-ssr/
+build/
+.vite/
+*.local
+
+# 4. Logs & Debug
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+vite.log
+
+# 5. OS & IDE artifacts
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
