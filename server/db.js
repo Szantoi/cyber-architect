@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { hashPin } from './security/auth.js';
@@ -6,8 +7,14 @@ import { config } from './config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dbPath = path.join(__dirname, 'portfolio.db');
 
+// Standardized Database directory (data/)
+const dataDir = process.env.SQLITE_DATA_DIR || path.join(__dirname, '../data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+export const dbPath = process.env.SQLITE_DB_PATH || path.join(dataDir, 'portfolio.sqlite');
 export const db = new Database(dbPath);
 
 // Enable WAL mode for high concurrent performance

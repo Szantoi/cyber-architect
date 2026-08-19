@@ -30,18 +30,42 @@ const Navbar = () => {
     }
   };
 
-  // Cross-page hash navigation listener
+  const handleLogoClick = (e) => {
+    if (isHome) {
+      e.preventDefault();
+      if (location.hash) {
+        window.history.pushState(null, '', '/');
+      }
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    } else {
+      window.scrollTo({
+        top: 0,
+        behavior: 'instant'
+      });
+    }
+  };
+
+  // Cross-page hash navigation & scroll to top listener
   useEffect(() => {
     if (isHome && location.hash) {
       setTimeout(() => {
         scrollToSection(location.hash);
       }, 100);
+    } else if (!location.hash) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
     }
-  }, [location, isHome]);
+  }, [location.pathname, location.hash, isHome]);
 
   return (
     <nav className="fixed top-0 w-full z-50 flex justify-between items-center px-6 py-4 max-w-full dark:bg-[#090d1d]/90 bg-[#d4dce8]/95 backdrop-blur-xl border-b dark:border-white/10 border-b-2 border-slate-900 transition-colors duration-200 rounded-none shadow-sm dark:shadow-none">
-      <Link to="/" className="text-2xl font-black italic tracking-tighter dark:text-neonCyan text-slate-950 font-headline uppercase hover:opacity-80 transition-opacity">
+      <Link 
+        to="/" 
+        onClick={handleLogoClick}
+        className="text-2xl font-black italic tracking-tighter dark:text-neonCyan text-slate-950 font-headline uppercase hover:opacity-80 transition-opacity"
+      >
         SZÁNTOI_GÁBOR // AI
       </Link>
 

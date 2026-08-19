@@ -216,7 +216,19 @@ knowledgeRouter.get('/rag/article-chunks', (req, res) => {
   }
 });
 
-// 8. Docs – egyedi dokumentum tartalom a Knowledge Vaultból
+// 8. Related Docs (Semantic Recommendation)
+knowledgeRouter.get('/docs/related/:slug', (req, res) => {
+  try {
+    const { limit = 3 } = req.query;
+    const related = dbService.getRelatedBlogPosts(req.params.slug, Number(limit) || 3);
+    res.json(related);
+  } catch (err) {
+    logger.error(`Failed to get related docs for: ${req.params.slug}`, err);
+    res.status(500).json({ error: 'RELATED_DOCS_ERROR', related: [] });
+  }
+});
+
+// 9. Docs – egyedi dokumentum tartalom a Knowledge Vaultból
 knowledgeRouter.get('/docs/:slug', (req, res) => {
   try {
     const { slug } = req.params;
