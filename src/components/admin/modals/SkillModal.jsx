@@ -46,9 +46,22 @@ const SkillModal = ({ editingSkill, setEditingSkill, onSave }) => {
           <label className="block dark:text-slate-400 text-slate-900 font-bold mb-1 uppercase">DESCRIPTION</label>
           <textarea
             rows={2}
-            value={editingSkill.desc}
+            value={editingSkill.desc || ''}
             onChange={(e) => setEditingSkill({ ...editingSkill, desc: e.target.value })}
             className="w-full dark:bg-slate-900 bg-white border-2 dark:border-white/10 border-slate-900 p-2.5 dark:text-slate-300 text-slate-900 font-medium focus:border-neonCyan outline-none leading-relaxed"
+          />
+        </div>
+
+        <div>
+          <label className="block dark:text-slate-400 text-slate-900 font-bold mb-1 uppercase">
+            RAG_EVIDENCE_SEARCH_QUERY (Automatikus hibrid keresési kulcsszavak ehhez a modulhoz)
+          </label>
+          <input
+            type="text"
+            value={editingSkill.query || ''}
+            placeholder="pl. zárt vállalati RAG vektoros keresés embeddings"
+            onChange={(e) => setEditingSkill({ ...editingSkill, query: e.target.value })}
+            className="w-full dark:bg-slate-900 bg-white border-2 dark:border-white/10 border-slate-900 p-2.5 text-neonCyan font-bold focus:border-neonCyan outline-none"
           />
         </div>
 

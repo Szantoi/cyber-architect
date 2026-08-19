@@ -1,8 +1,16 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useContent } from '../context/ContentContext';
+import RagEvidenceModal from './common/RagEvidenceModal';
 
 const Arsenal = () => {
   const { skills } = useContent();
+
+  const [evidenceModal, setEvidenceModal] = useState({
+    isOpen: false,
+    title: '',
+    query: ''
+  });
 
   const containerVars = {
     hidden: { opacity: 0 },
@@ -16,24 +24,59 @@ const Arsenal = () => {
     hidden: { opacity: 0, scale: 0.95, y: 20 },
     visible: { 
       opacity: 1, 
-      scale: 1,
+      scale: 1, 
       y: 0,
       transition: { duration: 0.5, ease: "circOut" }
     }
   };
 
-  // Default fallback skills if database hasn't loaded
+  // Enriched default skills with RAG search keywords & article hints
   const defaultSkills = [
-    { name: 'AI & BELSŐ TUDÁSBÁZISOK (RAG)', icon: 'psychology', color: 'var(--neon-cyan)', level: '0.95', desc: 'Céges dokumentumok és PDF-ek zárt, belső keresése és feldolgozása vektoradatbázisokkal és LLM-ekkel.' },
-    { name: 'EGYEDI KÓD-ALAPÚ AUTOMATIZÁCIÓ', icon: 'terminal', color: 'var(--neon-cyan)', level: '0.98', desc: 'Python és C#/.NET alapú robusztus backendek, amelyek stabilabbak és biztonságosabbak a dobozos no-code eszközöknél.' },
-    { name: 'ADATELEMZÉS & DÖNTÉSTÁMOGATÁS', icon: 'query_stats', color: 'var(--neon-magenta)', level: '0.90', desc: 'SQL, Power BI és Python (Pandas) riportok és kimutatások a pontos vezetői döntések támogatásához.' },
-    { name: 'MÉRNÖKI & CAD/CAM INTEGRÁCIÓ', icon: 'precision_manufacturing', color: 'var(--plasma-green)', level: '0.94', desc: 'Műszaki tervezőrendszerek (AutoCAD) és vállalatirányítási folyamatok közvetlen szoftveres összekapcsolása.' }
+    { 
+      name: 'AI & BELSŐ TUDÁSBÁZISOK (RAG)', 
+      icon: 'psychology', 
+      color: 'var(--neon-cyan)', 
+      level: '0.95', 
+      query: 'zárt vállalati RAG vektoros keresés embeddings',
+      blogHint: 'Vállalati AI & Adatbiztonság',
+      desc: 'Céges dokumentumok és PDF-ek zárt, belső keresése és feldolgozása vektoradatbázisokkal és LLM-ekkel.' 
+    },
+    { 
+      name: 'EGYEDI KÓD-ALAPÚ AUTOMATIZÁCIÓ', 
+      icon: 'terminal', 
+      color: 'var(--neon-cyan)', 
+      level: '0.98', 
+      query: 'folyamatautomatizálás python net sqlite',
+      blogHint: 'Szigetrendszerek & Excel kiváltása',
+      desc: 'Python és C#/.NET alapú robusztus backendek, amelyek stabilabbak és biztonságosabbak a dobozos no-code eszközöknél.' 
+    },
+    { 
+      name: 'ADATELEMZÉS & DÖNTÉSTÁMOGATÁS', 
+      icon: 'query_stats', 
+      color: 'var(--neon-magenta)', 
+      level: '0.90', 
+      query: 'adatbázis adatelemzés döntéstámogatás sqlite riport',
+      blogHint: 'Zárt Vállalati RAG Esettanulmány',
+      desc: 'SQL, Power BI és Python (Pandas) riportok és kimutatások a pontos vezetői döntések támogatásához.' 
+    },
+    { 
+      name: 'MÉRNÖKI & CAD/CAM INTEGRÁCIÓ', 
+      icon: 'precision_manufacturing', 
+      color: 'var(--plasma-green)', 
+      level: '0.94', 
+      query: 'AutoCAD C# adatkinyerés mérnöki automatizáció',
+      blogHint: 'CAD automatizáció mérnöki szemmel',
+      desc: 'Műszaki tervezőrendszerek (AutoCAD) és vállalatirányítási folyamatok közvetlen szoftveres összekapcsolása.' 
+    }
   ];
 
-  const displaySkills = (skills && skills.length > 0) ? skills : defaultSkills;
+  const displaySkills = (skills && skills.length > 0) ? skills.map((s, idx) => ({
+    ...defaultSkills[idx % defaultSkills.length],
+    ...s
+  })) : defaultSkills;
 
   return (
-    <section className="py-24 relative overflow-hidden bg-background scroll-mt-24" id="arsenal">
+    <section className="py-24 relative overflow-hidden bg-background scroll-mt-28" id="arsenal">
       <div className="container mx-auto px-6">
         <div className="mb-20 flex flex-col md:flex-row justify-between items-end gap-6">
           <div className="border-l-4 border-neonCyan pl-8">
@@ -57,7 +100,7 @@ const Arsenal = () => {
             <motion.div 
               key={skill.id || skill.name}
               variants={itemVars}
-              className="group relative bg-[var(--surface-panel)] p-8 border-2 dark:border-white/10 border-slate-900 transition-all duration-300 hover:shadow-[-5px_0_15px_rgba(0,251,251,0.2),5px_0_15px_rgba(255,0,255,0.2)] cursor-crosshair overflow-hidden shadow-[3px_3px_0_#0f172a] dark:shadow-none"
+              className="group relative bg-[var(--surface-panel)] p-7 border-2 dark:border-white/10 border-slate-900 transition-all duration-300 hover:shadow-[-5px_0_15px_rgba(0,251,251,0.2),5px_0_15px_rgba(255,0,255,0.2)] overflow-hidden shadow-[3px_3px_0_#0f172a] dark:shadow-none flex flex-col justify-between"
             >
               {/* Animated Background Pulse */}
               <div className="absolute inset-0 bg-gradient-to-br from-white/0 to-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -66,46 +109,68 @@ const Arsenal = () => {
               <div className="corner-bracket-tl dark:text-white/10 text-slate-900 group-hover:text-neonCyan transition-colors"></div>
               <div className="corner-bracket-br dark:text-white/10 text-slate-900 group-hover:text-neonMagenta transition-colors"></div>
               
-              <div className="flex items-start justify-between mb-8 relative z-10">
-                <div className="p-3 dark:bg-white/5 bg-slate-100 group-hover:bg-neonCyan/10 transition-colors">
-                  <span 
-                    className="material-symbols-outlined text-4xl text-slate-400 group-hover:animate-pulse transition-all duration-700"
-                    style={{ color: skill.color || 'var(--neon-cyan)' }}
-                  >
-                    {skill.icon || 'terminal'}
-                  </span>
+              <div>
+                <div className="flex items-start justify-between mb-6 relative z-10">
+                  <div className="p-3 dark:bg-white/5 bg-slate-100 group-hover:bg-neonCyan/10 transition-colors">
+                    <span 
+                      className="material-symbols-outlined text-4xl text-slate-400 group-hover:animate-pulse transition-all duration-700"
+                      style={{ color: skill.color || 'var(--neon-cyan)' }}
+                    >
+                      {skill.icon || 'terminal'}
+                    </span>
+                  </div>
+                  <div className="text-right font-mono">
+                    <span className="block text-[10px] dark:text-slate-500 text-slate-400 uppercase font-bold">SZINT</span>
+                    <span className="text-tertiary font-bold tracking-widest italic">{skill.level}</span>
+                  </div>
                 </div>
-                <div className="text-right font-mono">
-                  <span className="block text-[10px] dark:text-slate-500 text-slate-400 uppercase font-bold">SZINT</span>
-                  <span className="text-tertiary font-bold tracking-widest italic">{skill.level}</span>
-                </div>
-              </div>
 
-              <h3 className="text-xl font-headline font-bold text-on-surface mb-2 uppercase tracking-wide group-hover:text-neonCyan transition-colors relative z-10">
-                {skill.name}
-              </h3>
-              <p className="font-body text-xs dark:text-slate-400 text-slate-600 leading-relaxed mb-6 relative z-10 h-16 overflow-hidden">
-                {skill.desc}
-              </p>
+                <h3 className="text-xl font-headline font-bold text-on-surface mb-2 uppercase tracking-wide group-hover:text-neonCyan transition-colors relative z-10">
+                  {skill.name}
+                </h3>
+                <p className="font-body text-xs dark:text-slate-400 text-slate-600 leading-relaxed mb-4 relative z-10 min-h-[48px]">
+                  {skill.desc}
+                </p>
+              </div>
               
-              <div className="h-[1px] w-full dark:bg-white/5 bg-slate-200 relative overflow-hidden mt-auto">
-                <motion.div 
-                  initial={{ x: '-100%' }}
-                  whileInView={{ x: '0%' }}
-                  transition={{ duration: 1.5, ease: "circInOut" }}
-                  className="absolute inset-0 bg-gradient-to-r from-neonCyan to-neonMagenta opacity-50"
-                  style={{ width: `${parseFloat(skill.level || '0.9') * 100}%` }}
-                />
-              </div>
+              <div className="relative z-10 pt-3 border-t dark:border-white/5 border-slate-200 mt-auto">
+                <div className="h-[1px] w-full dark:bg-white/5 bg-slate-200 relative overflow-hidden mb-3">
+                  <motion.div 
+                    initial={{ x: '-100%' }}
+                    whileInView={{ x: '0%' }}
+                    transition={{ duration: 1.5, ease: "circInOut" }}
+                    className="absolute inset-0 bg-gradient-to-r from-neonCyan to-neonMagenta opacity-50"
+                    style={{ width: `${parseFloat(skill.level || '0.9') * 100}%` }}
+                  />
+                </div>
 
-              {/* Distressed Metadata Overlays */}
-              <div className="absolute bottom-2 right-2 font-mono text-[8px] opacity-0 group-hover:opacity-20 transition-opacity uppercase dark:text-slate-500 text-slate-400 pointer-events-none">
-                {skill.name.split(' ')[0]} // MODUL_AKTÍV
+                {/* Interactive RAG Proof Button */}
+                <button
+                  type="button"
+                  onClick={() => setEvidenceModal({
+                    isOpen: true,
+                    title: skill.name,
+                    query: skill.query || skill.name
+                  })}
+                  className="w-full py-2 px-2.5 bg-black/70 hover:bg-neonCyan hover:text-black text-neonCyan border border-neonCyan/50 transition-all font-mono text-[10px] font-bold uppercase tracking-wider flex items-center justify-between cursor-pointer shadow-sm"
+                >
+                  <span>🎯 CIKKEK RAG AJÁNLÁS ALAPJÁN</span>
+                  <span>➔</span>
+                </button>
               </div>
             </motion.div>
           ))}
         </motion.div>
       </div>
+
+      {/* RAG Evidence Modal */}
+      <RagEvidenceModal 
+        isOpen={evidenceModal.isOpen}
+        onClose={() => setEvidenceModal(prev => ({ ...prev, isOpen: false }))}
+        topicTitle={evidenceModal.title}
+        searchQuery={evidenceModal.query}
+        initialBadge="ARSENAL_TECH_STACK"
+      />
     </section>
   );
 };

@@ -623,7 +623,10 @@ const TacticalVaultExplorer = ({
   const { '*': docSlugParam } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const initialQuery = location.state?.searchQuery || '';
+
+  const urlParams = new URLSearchParams(location.search);
+  const urlSearchQuery = urlParams.get('q') || urlParams.get('search') || '';
+  const initialQuery = urlSearchQuery || location.state?.searchQuery || '';
 
   // Core Data States
   const [docs, setDocs] = useState([]);
@@ -640,6 +643,16 @@ const TacticalVaultExplorer = ({
   const [selectedTech, setSelectedTech] = useState('ALL');
   const [selectedCelcsoport, setSelectedCelcsoport] = useState('ALL');
   const [sortBy, setSortBy] = useState('recommended');
+
+  // Sync searchQuery when location.search or state changes externally
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const q = params.get('q') || params.get('search') || location.state?.searchQuery || '';
+    if (q) {
+      setSearchQuery(q);
+      setInArticleQuery(q);
+    }
+  }, [location.search, location.state]);
   
   // Faceted Pivot Matrix Mode: 'drive' | 'topic' | 'industry' | 'tech'
   const [treePivotMode, setTreePivotMode] = useState(() => {

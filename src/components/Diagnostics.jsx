@@ -1,12 +1,22 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useContent } from '../context/ContentContext';
+import RagEvidenceModal from './common/RagEvidenceModal';
 
 const Diagnostics = () => {
+  const { settings } = useContent();
+
   const [logs, setLogs] = useState([
     '[OK] CÉGES FOLYAMATOK FELTÉRKÉPEZÉSE...',
     '[OK] ADATVÉDELEM ÉS BELSŐ HOZZÁFÉRÉSEK ELLENŐRZÉSE...',
     '[OK] EGYEDI API ÉS RAG PIPELINE ÉPÍTÉSE...'
   ]);
+
+  const [evidenceModal, setEvidenceModal] = useState({
+    isOpen: false,
+    title: '',
+    query: ''
+  });
 
   const logPool = [
     '[OK] MANUÁLIS_EXCEL_FOLYAMAT_KIVÁLTVA',
@@ -45,8 +55,44 @@ const Diagnostics = () => {
     }
   };
 
+  const defaultSteps = [
+    { 
+      id: '01', 
+      title: 'Megértés & Folyamatvizsgálat', 
+      color: 'var(--neon-cyan)', 
+      query: 'szigetrendszerek excel folyamatautomatizálás',
+      blogHint: 'Szigetrendszerek & Excel kiváltása',
+      docHint: 'Folyamatoptimalizálás Esettanulmány',
+      text: 'Nem kezdek el vakon kódolni. Először feltárjuk a céges működés szűk keresztmetszeteit, a manuális feladatokat és az összekapcsolandó rendszereket.' 
+    },
+    { 
+      id: '02', 
+      title: 'Biztonságos Tervezés & Kód', 
+      color: 'var(--neon-magenta)', 
+      query: 'zárt vállalati RAG adatbiztonság vektoros',
+      blogHint: 'Vállalati AI & Adatbiztonság RAG',
+      docHint: 'Hibrid RAG Vektoros Keresés & XAI',
+      text: 'Python és .NET alapú megbízható megoldásokat és zárt belső AI-t építünk, így az üzleti adatok garantáltan a cégen belül maradnak.', 
+      offset: 'ml-0 md:ml-6' 
+    },
+    { 
+      id: '03', 
+      title: 'Gyakorlati Bevezetés & Oktatás', 
+      color: 'var(--plasma-green)', 
+      query: 'AutoCAD adatkinyerés automatizáció oktatás',
+      blogHint: 'CAD automatizáció mérnöki szemmel',
+      docHint: 'AutoCAD .NET C# Adatkinyerés',
+      text: 'Nem hagyom magára a csapatot az új szoftverrel. A rendszert beüzemeljük, a munkatársakat betanítjuk, és biztosítjuk a zökkenőmentes használatot.', 
+      offset: 'ml-0 md:ml-12' 
+    }
+  ];
+
+  const diagnosticSteps = (settings.diagnostics_steps && Array.isArray(settings.diagnostics_steps) && settings.diagnostics_steps.length > 0)
+    ? settings.diagnostics_steps
+    : defaultSteps;
+
   return (
-    <section className="py-24 bg-background relative overflow-hidden scroll-mt-24" id="diagnostics">
+    <section className="py-24 bg-background relative overflow-hidden scroll-mt-28" id="diagnostics">
       {/* Background Glow */}
       <div className="absolute top-1/2 left-0 w-[400px] h-[400px] bg-neonMagenta/5 rounded-full blur-[100px] pointer-events-none"></div>
 
@@ -133,39 +179,69 @@ const Diagnostics = () => {
             </div>
           </motion.div>
 
-          <div className="space-y-12">
-            {[
-              { id: '01', title: 'Megértés & Folyamatvizsgálat', color: 'var(--neon-cyan)', text: 'Nem kezdek el vakon kódolni. Először feltárjuk a céges működés szűk keresztmetszeteit, a manuális feladatokat és az összekapcsolandó rendszereket.' },
-              { id: '02', title: 'Biztonságos Tervezés & Kód', color: 'var(--neon-magenta)', text: 'Python és .NET alapú megbízható megoldásokat és zárt belső AI-t építünk, így az üzleti adatok garantáltan a cégen belül maradnak.', offset: 'ml-0 md:ml-12' },
-              { id: '03', title: 'Gyakorlati Bevezetés & Oktatás', color: 'var(--plasma-green)', text: 'Nem hagyom magára a csapatot az új szoftverrel. A rendszert beüzemeljük, a munkatársakat betanítjuk, és biztosítjuk a zökkenőmentes használatot.', offset: 'ml-0 md:ml-24' }
-            ].map((item) => (
+          <div className="space-y-8">
+            {diagnosticSteps.map((item) => (
               <motion.div 
                 key={item.id} 
                 variants={itemVars}
-                className={`flex items-start gap-8 ${item.offset || ''} group p-4 border border-transparent dark:hover:border-white/5 hover:border-slate-200 transition-colors cursor-default`}
+                className={`flex flex-col sm:flex-row items-start gap-6 ${item.offset || ''} group p-5 bg-[var(--surface-panel)] border-2 dark:border-white/10 border-slate-900 transition-all hover:border-neonCyan shadow-[3px_3px_0_#0f172a] dark:shadow-none relative`}
               >
                 <div 
                   style={{ backgroundColor: item.color }} 
-                  className="text-black w-14 h-14 shrink-0 flex items-center justify-center font-black italic rounded-none relative overflow-hidden shadow-sm"
+                  className="text-black w-14 h-14 shrink-0 flex items-center justify-center font-black italic rounded-none relative overflow-hidden shadow-sm self-start"
                 >
                   <span className="relative z-10 font-mono text-lg">{item.id}</span>
                   <div className="absolute inset-0 bg-white/20 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 </div>
-                <div>
-                  <h3 style={{ color: item.color }} className="text-2xl font-headline font-black uppercase tracking-tight">
+                
+                <div className="flex-1 w-full">
+                  <h3 style={{ color: item.color }} className="text-xl md:text-2xl font-headline font-black uppercase tracking-tight">
                     {item.title}
                   </h3>
-                  <p className="dark:text-slate-400 text-slate-600 mt-2 font-body text-sm leading-relaxed max-w-sm">
+                  <p className="dark:text-slate-400 text-slate-600 mt-2 font-body text-xs md:text-sm leading-relaxed">
                     {item.text}
                   </p>
+
+                  {/* Interactive RAG Proof / Article Gateway */}
+                  <div className="mt-4 pt-3 border-t dark:border-white/10 border-slate-300 flex flex-wrap items-center justify-between gap-2 font-mono text-[10px]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-slate-500 font-bold">RAG BIZONYÍTÉK:</span>
+                      <span className="dark:bg-black/60 bg-slate-100 px-2 py-0.5 border dark:border-white/10 border-slate-400 dark:text-slate-300 text-slate-800 font-medium">
+                        📰 {item.blogHint}
+                      </span>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setEvidenceModal({
+                        isOpen: true,
+                        title: item.title,
+                        query: item.query
+                      })}
+                      className="px-3 py-1.5 bg-black text-neonCyan border border-neonCyan/60 hover:bg-neonCyan hover:text-black transition-all font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <span>🎯 CIKKEK RAG AJÁNLÁS ALAPJÁN</span>
+                      <span>➔</span>
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             ))}
           </div>
         </motion.div>
       </div>
+
+      {/* RAG Evidence Modal */}
+      <RagEvidenceModal 
+        isOpen={evidenceModal.isOpen}
+        onClose={() => setEvidenceModal(prev => ({ ...prev, isOpen: false }))}
+        topicTitle={evidenceModal.title}
+        searchQuery={evidenceModal.query}
+        initialBadge="DIAGNOSTICS_METHODOLOGY"
+      />
     </section>
   );
 };
 
 export default Diagnostics;
+

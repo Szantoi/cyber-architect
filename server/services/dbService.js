@@ -72,13 +72,13 @@ export const dbService = {
     return db.prepare('SELECT * FROM skills WHERE id = ?').get(Number(id)) || null;
   },
 
-  createSkill({ id, name, icon, color, level, desc, sort_order = 0 }, actor = 'SYSTEM') {
+  createSkill({ id, name, icon, color, level, desc, query = '', sort_order = 0 }, actor = 'SYSTEM') {
     if (!name) throw new Error('MISSING_PARAMETER: Skill name is required');
     let info;
     if (id) {
       info = db.prepare(`
-        INSERT INTO skills (id, name, icon, color, level, desc, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO skills (id, name, icon, color, level, desc, query, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         Number(id),
         String(name),
@@ -86,24 +86,26 @@ export const dbService = {
         String(color || 'var(--neon-cyan)'),
         String(level || '0.90'),
         String(desc || ''),
+        String(query || ''),
         Number(sort_order) || 0
       );
     } else {
       info = db.prepare(`
-        INSERT INTO skills (name, icon, color, level, desc, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO skills (name, icon, color, level, desc, query, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
         String(name),
         String(icon || 'terminal'),
         String(color || 'var(--neon-cyan)'),
         String(level || '0.90'),
         String(desc || ''),
+        String(query || ''),
         Number(sort_order) || 0
       );
     }
 
     const insertedId = id ? Number(id) : info.lastInsertRowid;
-    const created = { id: insertedId, name, icon, color, level, desc, sort_order };
+    const created = { id: insertedId, name, icon, color, level, desc, query, sort_order };
     this.recordAuditLog({
       action: 'CREATE_SKILL',
       entity: 'skills',
@@ -116,12 +118,12 @@ export const dbService = {
     return created;
   },
 
-  updateSkill(id, { name, icon, color, level, desc, sort_order = 0 }, actor = 'SYSTEM') {
+  updateSkill(id, { name, icon, color, level, desc, query = '', sort_order = 0 }, actor = 'SYSTEM') {
     if (!id) throw new Error('MISSING_PARAMETER: Skill id is required');
     const prevState = this.getSkillById(id);
 
     db.prepare(`
-      UPDATE skills SET name = ?, icon = ?, color = ?, level = ?, desc = ?, sort_order = ?
+      UPDATE skills SET name = ?, icon = ?, color = ?, level = ?, desc = ?, query = ?, sort_order = ?
       WHERE id = ?
     `).run(
       String(name),
@@ -129,11 +131,12 @@ export const dbService = {
       String(color || 'var(--neon-cyan)'),
       String(level || '0.90'),
       String(desc || ''),
+      String(query || ''),
       Number(sort_order) || 0,
       Number(id)
     );
 
-    const newState = { id: Number(id), name, icon, color, level, desc, sort_order };
+    const newState = { id: Number(id), name, icon, color, level, desc, query, sort_order };
     this.recordAuditLog({
       action: 'UPDATE_SKILL',
       entity: 'skills',

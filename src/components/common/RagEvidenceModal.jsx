@@ -1,0 +1,269 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+
+/**
+ * ============================================================================
+ * RAG EVIDENCE MODAL // TACTICAL INSIGHTS & PROOF EXPLORER
+ * ============================================================================
+ * Élő RAG keresési találatok, hibrid relevanciapontszámok és szövegrészletek
+ * megjelenítése felugró taktikai ablakban, közvetlen navigációval a Blog és
+ * Tudástár modulokba.
+ */
+const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBadge = 'RAG_EVIDENCE_GATEWAY' }) => {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState([]);
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'blog' | 'knowledge'
+
+  useEffect(() => {
+    if (!isOpen || !searchQuery) return;
+
+    const fetchEvidence = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/search/unified?q=${encodeURIComponent(searchQuery)}&scope=all&limit=8`);
+        if (res.ok) {
+          const data = await res.json();
+          setResults(data.results || []);
+        } else {
+          setResults([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch RAG evidence:', err);
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvidence();
+  }, [isOpen, searchQuery]);
+
+  // Escape key handler
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const blogResults = results.filter(r => r.type === 'blog' || r.content_type === 'blog');
+  const knowledgeResults = results.filter(r => r.type === 'knowledge' || r.content_type === 'knowledge');
+
+  const filteredResults = activeFilter === 'all' 
+    ? results 
+    : (activeFilter === 'blog' ? blogResults : knowledgeResults);
+
+  const handleOpenDoc = (item) => {
+    onClose();
+    if (item.type === 'blog' || item.content_type === 'blog') {
+      navigate(`/blog/${item.slug}`);
+    } else {
+      navigate(`/knowledge/${item.slug}`);
+    }
+  };
+
+  const handleNavigateFullSearch = (targetType) => {
+    onClose();
+    const targetRoute = targetType === 'blog' ? '/blog' : '/knowledge';
+    navigate(`${targetRoute}?q=${encodeURIComponent(searchQuery)}`);
+  };
+
+  return (
+    <AnimatePresence>
+      <div className="fixed inset-0 z-[99999] flex items-start sm:items-center justify-center p-4 sm:p-6 md:p-10 pt-24 sm:pt-28 pb-12 overflow-y-auto">
+        {/* Backdrop */}
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-[#090d1d]/85 backdrop-blur-md"
+        />
+
+        {/* Modal Window Container */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.96, y: 15 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.96, y: 15 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="relative w-full max-w-4xl bg-[var(--surface-panel)] border-2 border-neonCyan dark:bg-[#090d1d] bg-slate-900 text-white rounded-none shadow-[-10px_0_30px_rgba(0,255,255,0.2),10px_0_30px_rgba(255,0,255,0.2)] overflow-hidden z-10 my-auto max-h-[82vh] flex flex-col"
+        >
+          {/* Tactical Terminal Header Bar */}
+          <div className="bg-slate-950 px-5 py-3.5 flex items-center justify-between border-b-2 border-neonCyan/40 select-none">
+            <div className="flex items-center gap-3">
+              <div className="flex gap-1.5">
+                <span className="w-2.5 h-2.5 bg-plasmaGreen inline-block animate-pulse"></span>
+                <span className="w-2.5 h-2.5 bg-neonCyan inline-block"></span>
+                <span className="w-2.5 h-2.5 bg-neonMagenta inline-block"></span>
+              </div>
+              <span className="font-mono text-xs text-neonCyan font-bold uppercase tracking-widest">
+                // {initialBadge} // RAG_NEURAL_RECALL
+              </span>
+            </div>
+            <button
+              onClick={onClose}
+              className="font-mono text-xs text-slate-400 hover:text-neonMagenta border border-transparent hover:border-neonMagenta px-2 py-0.5 transition-colors uppercase font-bold cursor-pointer"
+              title="Bezárás (ESC)"
+            >
+              [ESC ✕]
+            </button>
+          </div>
+
+          {/* Context Header */}
+          <div className="p-6 pb-4 border-b border-white/10 bg-slate-950/60">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <span className="text-[10px] font-mono text-neonMagenta font-black uppercase tracking-[0.2em] block mb-1">
+                  KAPCSOLÓDÓ TÉMAKÖR & SZAKMAI ÁLLÍTÁSOK
+                </span>
+                <h2 className="text-2xl font-headline font-black uppercase text-white tracking-tight">
+                  {topicTitle}
+                </h2>
+              </div>
+              <div className="font-mono text-xs bg-black/80 border border-neonCyan/30 px-3 py-1.5 flex items-center gap-2 self-start md:self-auto">
+                <span className="text-slate-400 text-[10px]">RAG KULCSSZÓ:</span>
+                <span className="text-neonCyan font-bold">"{searchQuery}"</span>
+              </div>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-2 mt-5 font-mono text-xs">
+              <button
+                onClick={() => setActiveFilter('all')}
+                className={`px-3 py-1 text-xs font-bold uppercase transition-all rounded-none cursor-pointer ${
+                  activeFilter === 'all'
+                    ? 'bg-neonCyan text-black border-2 border-neonCyan font-black'
+                    : 'bg-black/50 text-slate-400 border border-white/10 hover:text-white'
+                }`}
+              >
+                ÖSSZES TALÁLAT ({results.length})
+              </button>
+              <button
+                onClick={() => setActiveFilter('blog')}
+                className={`px-3 py-1 text-xs font-bold uppercase transition-all rounded-none cursor-pointer flex items-center gap-1.5 ${
+                  activeFilter === 'blog'
+                    ? 'bg-neonMagenta text-black border-2 border-neonMagenta font-black'
+                    : 'bg-black/50 text-slate-400 border border-white/10 hover:text-white'
+                }`}
+              >
+                <span>📰 BLOG ESETTANULMÁNYOK ({blogResults.length})</span>
+              </button>
+              <button
+                onClick={() => setActiveFilter('knowledge')}
+                className={`px-3 py-1 text-xs font-bold uppercase transition-all rounded-none cursor-pointer flex items-center gap-1.5 ${
+                  activeFilter === 'knowledge'
+                    ? 'bg-plasmaGreen text-black border-2 border-plasmaGreen font-black'
+                    : 'bg-black/50 text-slate-400 border border-white/10 hover:text-white'
+                }`}
+              >
+                <span>📚 TUDÁSTÁR CIKKEK ({knowledgeResults.length})</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Results Scrollable Body */}
+          <div className="p-6 overflow-y-auto flex-1 space-y-4 max-h-[50vh]">
+            {loading ? (
+              <div className="py-16 text-center font-mono">
+                <div className="inline-block w-8 h-8 border-2 border-neonCyan border-t-transparent animate-spin mb-4"></div>
+                <p className="text-xs text-neonCyan tracking-widest animate-pulse">
+                  RAG VEKTOROS ÉS FULL-TEXT KERESÉS FOLYAMATBAN...
+                </p>
+              </div>
+            ) : filteredResults.length === 0 ? (
+              <div className="py-12 text-center font-mono border border-white/5 bg-black/30 p-8">
+                <span className="material-symbols-outlined text-4xl text-slate-600 mb-2">manage_search</span>
+                <p className="text-sm text-slate-300 font-bold uppercase">Nincs közvetlen találat erre a kifejezésre</p>
+                <p className="text-xs text-slate-500 mt-1">Próbáld meg a részletes keresést a Tudástárban vagy a Blogban.</p>
+              </div>
+            ) : (
+              filteredResults.map((item, idx) => {
+                const isBlog = item.type === 'blog' || item.content_type === 'blog';
+                const scorePct = item.relevanceScore || Math.min(99, Math.round((item.score || 0.85) * 100));
+
+                return (
+                  <div
+                    key={item.id || item.slug || idx}
+                    className="p-4 bg-black/60 border border-white/10 hover:border-neonCyan transition-all group relative cursor-pointer"
+                    onClick={() => handleOpenDoc(item)}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 ${
+                          isBlog 
+                            ? 'bg-neonMagenta/20 text-neonMagenta border border-neonMagenta/40' 
+                            : 'bg-plasmaGreen/20 text-plasmaGreen border border-plasmaGreen/40'
+                        }`}>
+                          {isBlog ? '📰 BLOG ESETTANULMÁNY' : '📚 TUDÁSTÁR DOKUMENTUM'}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          [{item.category || (isBlog ? 'ESETTANULMÁNY' : 'TUDÁSTÁR')}]
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 font-mono text-[11px]">
+                        <span className="text-slate-500 text-[10px] uppercase">RAG ILLESZKEDÉS:</span>
+                        <span className="text-tertiary font-bold">{scorePct}%</span>
+                      </div>
+                    </div>
+
+                    <h4 className="text-base font-headline font-black uppercase text-white group-hover:text-neonCyan transition-colors">
+                      {item.title}
+                    </h4>
+
+                    <p className="text-xs font-body text-slate-300 mt-1.5 line-clamp-2 leading-relaxed">
+                      {item.matchSnippet || item.summary || item.content?.slice(0, 180)}
+                    </p>
+
+                    <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between font-mono text-[11px]">
+                      <span className="text-slate-500 text-[10px]">
+                        OLVASÁSI IDŐ: {item.read_time || '5 PERC'}
+                      </span>
+                      <span className="text-neonCyan group-hover:translate-x-1 transition-transform flex items-center gap-1 font-bold">
+                        DOKUMENTUM MEGNYITÁSA ➔
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Modal Footer Bar with Direct Full-Search Navigation */}
+          <div className="p-4 bg-slate-950 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-xs">
+            <span className="text-slate-400 text-[11px]">
+              Több találat böngészése a teljes archívumban:
+            </span>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                onClick={() => handleNavigateFullSearch('blog')}
+                className="flex-1 sm:flex-initial px-3 py-2 bg-black border border-neonMagenta text-neonMagenta hover:bg-neonMagenta hover:text-black font-bold uppercase transition-all text-center cursor-pointer"
+              >
+                📰 BLOG KERESŐ MEGNYITÁSA
+              </button>
+              <button
+                onClick={() => handleNavigateFullSearch('knowledge')}
+                className="flex-1 sm:flex-initial px-3 py-2 bg-neonCyan text-black font-black uppercase border border-neonCyan hover:bg-black hover:text-neonCyan transition-all text-center cursor-pointer"
+              >
+                📚 TUDÁSTÁR KERESŐ MEGNYITÁSA
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </AnimatePresence>
+  );
+};
+
+export default RagEvidenceModal;

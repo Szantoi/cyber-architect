@@ -38,9 +38,13 @@ export function initDatabase() {
       color TEXT NOT NULL,
       level TEXT NOT NULL,
       desc TEXT NOT NULL,
+      query TEXT DEFAULT '',
       sort_order INTEGER DEFAULT 0
     );
   `);
+  try {
+    db.exec('ALTER TABLE skills ADD COLUMN query TEXT DEFAULT ""');
+  } catch {}
 
   // 3. Projects Table (The Grid)
   db.exec(`
@@ -277,32 +281,65 @@ function seedData() {
     hero_btn_secondary: 'PROJEKTEK MEGTEKINTÉSE',
     diagnostics_title: 'Módszertan & Folyamat',
     diagnostics_subtitle: 'A technológia csak eszköz: először a vállalati működést és a szűk keresztmetszeteket vizsgáljuk meg, majd stabil, kód-alapú architektúrát építünk.',
+    diagnostics_steps: JSON.stringify([
+      { 
+        id: '01', 
+        title: 'Megértés & Folyamatvizsgálat', 
+        color: '#00FFFF', 
+        query: 'szigetrendszerek excel folyamatautomatizálás',
+        blogHint: 'Szigetrendszerek & Excel kiváltása',
+        docHint: 'Folyamatoptimalizálás Esettanulmány',
+        text: 'Nem kezdek el vakon kódolni. Először feltárjuk a céges működés szűk keresztmetszeteit, a manuális feladatokat és az összekapcsolandó rendszereket.' 
+      },
+      { 
+        id: '02', 
+        title: 'Biztonságos Tervezés & Kód', 
+        color: '#FF00FF', 
+        query: 'zárt vállalati RAG adatbiztonság vektoros',
+        blogHint: 'Vállalati AI & Adatbiztonság RAG',
+        docHint: 'Hibrid RAG Vektoros Keresés & XAI',
+        text: 'Python és .NET alapú megbízható megoldásokat és zárt belső AI-t építünk, így az üzleti adatok garantáltan a cégen belül maradnak.',
+        offset: 'ml-0 md:ml-6'
+      },
+      { 
+        id: '03', 
+        title: 'Gyakorlati Bevezetés & Oktatás', 
+        color: '#80FF00', 
+        query: 'AutoCAD adatkinyerés automatizáció oktatás',
+        blogHint: 'CAD automatizáció mérnöki szemmel',
+        docHint: 'AutoCAD .NET C# Adatkinyerés',
+        text: 'Nem hagyom magára a csapatot az új szoftverrel. A rendszert beüzemeljük, a munkatársakat betanítjuk, és biztosítjuk a zökkenőmentes használatot.',
+        offset: 'ml-0 md:ml-12'
+      }
+    ]),
     uplink_title: 'Kapcsolat.',
     uplink_subtitle: 'Konzultáljunk a vállalati folyamatok automatizálásáról vagy egy zárt AI pilot indításáról.'
   };
 
-  const insertSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+  const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
 
   for (const [key, value] of Object.entries(defaultSettings)) {
     insertSetting.run(key, value);
   }
 
   // Seed / Refresh Skills
-  db.exec('DELETE FROM skills');
-  const insertSkill = db.prepare(`
-    INSERT OR REPLACE INTO skills (name, icon, color, level, desc, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
+  const existingSkillsCount = db.prepare('SELECT count(*) as count FROM skills').get().count;
+  if (existingSkillsCount === 0) {
+    const insertSkill = db.prepare(`
+      INSERT INTO skills (name, icon, color, level, desc, query, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
 
-  const initialSkills = [
-    { name: 'AI & BELSŐ TUDÁSBÁZISOK (RAG)', icon: 'psychology', color: 'var(--neon-cyan)', level: '0.95', desc: 'Céges dokumentumok és PDF-ek zárt, belső keresése és feldolgozása vektoradatbázisokkal és LLM-ekkel.', sort_order: 1 },
-    { name: 'EGYEDI KÓD-ALAPÚ AUTOMATIZÁCIÓ', icon: 'terminal', color: 'var(--neon-cyan)', level: '0.98', desc: 'Python és C#/.NET alapú robusztus backendek, amelyek stabilabbak és biztonságosabbak a dobozos no-code eszközöknél.', sort_order: 2 },
-    { name: 'ADATELEMZÉS & DÖNTÉSTÁMOGATÁS', icon: 'query_stats', color: 'var(--neon-magenta)', level: '0.90', desc: 'SQL, Power BI és Python (Pandas) riportok és kimutatások a pontos vezetői döntések támogatásához.', sort_order: 3 },
-    { name: 'MÉRNÖKI & CAD/CAM INTEGRÁCIÓ', icon: 'precision_manufacturing', color: 'var(--plasma-green)', level: '0.94', desc: 'Műszaki tervezőrendszerek (AutoCAD) és vállalatirányítási folyamatok közvetlen szoftveres összekapcsolása.', sort_order: 4 }
-  ];
+    const initialSkills = [
+      { name: 'AI & BELSŐ TUDÁSBÁZISOK (RAG)', icon: 'psychology', color: 'var(--neon-cyan)', level: '0.95', desc: 'Céges dokumentumok és PDF-ek zárt, belső keresése és feldolgozása vektoradatbázisokkal és LLM-ekkel.', query: 'zárt vállalati RAG vektoros keresés embeddings', sort_order: 1 },
+      { name: 'EGYEDI KÓD-ALAPÚ AUTOMATIZÁCIÓ', icon: 'terminal', color: 'var(--neon-cyan)', level: '0.98', desc: 'Python és C#/.NET alapú robusztus backendek, amelyek stabilabbak és biztonságosabbak a dobozos no-code eszközöknél.', query: 'folyamatautomatizálás python net sqlite', sort_order: 2 },
+      { name: 'ADATELEMZÉS & DÖNTÉSTÁMOGATÁS', icon: 'query_stats', color: 'var(--neon-magenta)', level: '0.90', desc: 'SQL, Power BI és Python (Pandas) riportok és kimutatások a pontos vezetői döntések támogatásához.', query: 'adatbázis adatelemzés döntéstámogatás sqlite riport', sort_order: 3 },
+      { name: 'MÉRNÖKI & CAD/CAM INTEGRÁCIÓ', icon: 'precision_manufacturing', color: 'var(--plasma-green)', level: '0.94', desc: 'Műszaki tervezőrendszerek (AutoCAD) és vállalatirányítási folyamatok közvetlen szoftveres összekapcsolása.', query: 'AutoCAD C# adatkinyerés mérnöki automatizáció', sort_order: 4 }
+    ];
 
-  for (const s of initialSkills) {
-    insertSkill.run(s.name, s.icon, s.color, s.level, s.desc, s.sort_order);
+    for (const s of initialSkills) {
+      insertSkill.run(s.name, s.icon, s.color, s.level, s.desc, s.query, s.sort_order);
+    }
   }
 
   // Seed / Refresh Projects
