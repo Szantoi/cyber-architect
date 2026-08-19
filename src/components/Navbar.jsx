@@ -11,9 +11,9 @@ const FAN_MENU_BASE = [
     label: 'MCP UPLINK',
     to: '/mcp',
     icon: 'hub',
-    textColor: 'text-neonCyan',
-    borderColor: 'border-neonCyan',
-    glow: 'shadow-[0_0_12px_rgba(0,255,255,0.5)]',
+    textColor: 'dark:text-neonCyan text-cyan-800',
+    borderColor: 'dark:border-neonCyan border-slate-900',
+    glow: 'dark:shadow-[0_0_12px_rgba(0,255,255,0.5)] shadow-[3px_3px_0_#0f172a]',
     angleDeg: 6 // Degrees from vertical (straight up)
   },
   {
@@ -21,9 +21,9 @@ const FAN_MENU_BASE = [
     label: 'MÓDSZERTAN',
     hash: '#diagnostics',
     icon: 'insights',
-    textColor: 'text-yellow-400',
-    borderColor: 'border-yellow-400/80',
-    glow: 'shadow-[0_0_12px_rgba(250,204,21,0.4)]',
+    textColor: 'dark:text-yellow-400 text-amber-700',
+    borderColor: 'dark:border-yellow-400/80 border-slate-900',
+    glow: 'dark:shadow-[0_0_12px_rgba(250,204,21,0.4)] shadow-[3px_3px_0_#0f172a]',
     angleDeg: 23
   },
   {
@@ -31,9 +31,9 @@ const FAN_MENU_BASE = [
     label: 'ESZKÖZTÁR',
     hash: '#arsenal',
     icon: 'terminal',
-    textColor: 'text-neonMagenta',
-    borderColor: 'border-neonMagenta/80',
-    glow: 'shadow-[0_0_12px_rgba(255,0,255,0.4)]',
+    textColor: 'dark:text-neonMagenta text-fuchsia-800',
+    borderColor: 'dark:border-neonMagenta/80 border-slate-900',
+    glow: 'dark:shadow-[0_0_12px_rgba(255,0,255,0.4)] shadow-[3px_3px_0_#0f172a]',
     angleDeg: 40
   },
   {
@@ -41,9 +41,9 @@ const FAN_MENU_BASE = [
     label: 'ARCHITEKTÚRA',
     to: '/architecture',
     icon: 'account_tree',
-    textColor: 'text-cyan-400',
-    borderColor: 'border-cyan-400/80',
-    glow: 'shadow-[0_0_12px_rgba(34,211,238,0.4)]',
+    textColor: 'dark:text-cyan-400 text-cyan-800',
+    borderColor: 'dark:border-cyan-400/80 border-slate-900',
+    glow: 'dark:shadow-[0_0_12px_rgba(34,211,238,0.4)] shadow-[3px_3px_0_#0f172a]',
     angleDeg: 57
   },
   {
@@ -51,9 +51,9 @@ const FAN_MENU_BASE = [
     label: 'KAPCSOLAT',
     hash: '#uplink',
     icon: 'send',
-    textColor: 'text-plasmaGreen',
-    borderColor: 'border-plasmaGreen/80',
-    glow: 'shadow-[0_0_12px_rgba(128,255,0,0.4)]',
+    textColor: 'dark:text-plasmaGreen text-emerald-800',
+    borderColor: 'dark:border-plasmaGreen/80 border-slate-900',
+    glow: 'dark:shadow-[0_0_12px_rgba(128,255,0,0.4)] shadow-[3px_3px_0_#0f172a]',
     angleDeg: 74
   },
   {
@@ -61,9 +61,9 @@ const FAN_MENU_BASE = [
     label: 'ADMIN',
     to: '/admin',
     icon: 'lock',
-    textColor: 'text-slate-300',
-    borderColor: 'border-slate-400/80',
-    glow: 'shadow-[0_0_10px_rgba(203,213,225,0.3)]',
+    textColor: 'dark:text-slate-300 text-slate-700',
+    borderColor: 'dark:border-slate-400/80 border-slate-900',
+    glow: 'dark:shadow-[0_0_10px_rgba(203,213,225,0.3)] shadow-[3px_3px_0_#0f172a]',
     angleDeg: 90
   }
 ];
@@ -442,7 +442,7 @@ const Navbar = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-[#090d1d]/90 backdrop-blur-sm"
+              className="fixed inset-0 dark:bg-[#090d1d]/90 bg-slate-950/40 backdrop-blur-md"
               onClick={() => setMoreMenuOpen(false)}
             />
 
@@ -458,7 +458,7 @@ const Navbar = () => {
               <button
                 type="button"
                 onClick={toggleHandMode}
-                className="flex items-center gap-1.5 py-2 px-3 border-2 border-yellow-400/90 bg-[#070b19]/95 text-yellow-400 rounded-none shadow-[3px_3px_0_#0f172a] text-[10px] font-mono font-black uppercase cursor-pointer hover:bg-yellow-400 hover:text-black transition-colors select-none"
+                className="flex items-center gap-1.5 py-2 px-3 border-2 dark:border-yellow-400/90 border-slate-900 dark:bg-[#070b19]/95 bg-amber-300 dark:text-yellow-400 text-slate-950 rounded-none shadow-[3px_3px_0_#0f172a] text-[10px] font-mono font-black uppercase cursor-pointer hover:dark:bg-yellow-400 hover:dark:text-black hover:bg-slate-900 hover:text-white transition-colors select-none"
                 title="Kezesség váltása (Jobb / Balkezes mód)"
               >
                 <span className="text-sm">✋</span>
@@ -472,30 +472,30 @@ const Navbar = () => {
               animate={{ scale: 1, opacity: 0.6 }}
               exit={{ scale: 0, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 280, damping: 26 }}
-              className={`fixed bottom-6 w-96 h-96 border-2 border-dashed border-neonCyan pointer-events-none shadow-[0_0_25px_rgba(0,255,255,0.25)] ${
+              className={`fixed bottom-6 w-96 h-96 border-2 border-dashed dark:border-neonCyan border-slate-900 pointer-events-none dark:shadow-[0_0_25px_rgba(0,255,255,0.25)] shadow-[0_0_25px_rgba(15,23,42,0.15)] ${
                 handMode === 'right'
                   ? 'right-6 rounded-tl-full origin-bottom-right'
                   : 'left-6 rounded-tr-full origin-bottom-left'
               }`}
             >
               {/* Target Reticle at 45 degree focal point */}
-              <div className={`absolute w-12 h-12 border-2 border-neonCyan animate-pulse flex items-center justify-center ${
+              <div className={`absolute w-12 h-12 border-2 dark:border-neonCyan border-cyan-800 dark:bg-transparent bg-cyan-200/40 animate-pulse flex items-center justify-center ${
                 handMode === 'right'
                   ? 'top-20 left-20 -rotate-45'
                   : 'top-20 right-20 rotate-45'
               }`}>
-                <span className="w-2 h-2 bg-neonCyan" />
+                <span className="w-2 h-2 dark:bg-neonCyan bg-cyan-800" />
               </div>
             </motion.div>
 
-            {/* Stepper Rotation Buttons (Directly above bottom bar for comfortable thumb access) */}
+            {/* Stepper Rotation Buttons */}
             <div className={`fixed bottom-20 z-50 flex items-center gap-2 ${
               handMode === 'right' ? 'right-6' : 'left-6'
             }`}>
               <button
                 type="button"
                 onClick={rotatePrev}
-                className="py-1.5 px-3 border-2 border-neonCyan bg-[#070b19] text-neonCyan font-mono font-black text-xs uppercase shadow-[2px_2px_0_#0f172a] hover:bg-neonCyan hover:text-black transition-colors active:scale-95 cursor-pointer"
+                className="py-1.5 px-3 border-2 dark:border-neonCyan border-slate-900 dark:bg-[#070b19] bg-white dark:text-neonCyan text-slate-950 font-mono font-black text-xs uppercase shadow-[3px_3px_0_#0f172a] hover:dark:bg-neonCyan hover:dark:text-black hover:bg-slate-900 hover:text-white transition-colors active:scale-95 cursor-pointer"
                 title="Tárcsa forgatása balra"
               >
                 ◀ FORGATÁS
@@ -503,7 +503,7 @@ const Navbar = () => {
               <button
                 type="button"
                 onClick={rotateNext}
-                className="py-1.5 px-3 border-2 border-neonCyan bg-[#070b19] text-neonCyan font-mono font-black text-xs uppercase shadow-[2px_2px_0_#0f172a] hover:bg-neonCyan hover:text-black transition-colors active:scale-95 cursor-pointer"
+                className="py-1.5 px-3 border-2 dark:border-neonCyan border-slate-900 dark:bg-[#070b19] bg-white dark:text-neonCyan text-slate-950 font-mono font-black text-xs uppercase shadow-[3px_3px_0_#0f172a] hover:dark:bg-neonCyan hover:dark:text-black hover:bg-slate-900 hover:text-white transition-colors active:scale-95 cursor-pointer"
                 title="Tárcsa forgatása jobbra"
               >
                 FORGATÁS ▶
@@ -528,7 +528,7 @@ const Navbar = () => {
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{
                       scale: item.isCenter ? 1.1 : 0.88,
-                      opacity: item.isCenter ? 1 : 0.75,
+                      opacity: item.isCenter ? 1 : 0.8,
                       x: item.dx,
                       y: item.dy,
                       zIndex: item.isCenter ? 30 : 10
@@ -549,14 +549,14 @@ const Navbar = () => {
                       <Link
                         to={item.to}
                         onClick={() => setMoreMenuOpen(false)}
-                        className={`flex items-center gap-2.5 py-2 px-3.5 border-2 rounded-none whitespace-nowrap shadow-[3px_3px_0_#0f172a] transition-all ${
+                        className={`flex items-center gap-2.5 py-2 px-3.5 border-2 rounded-none whitespace-nowrap transition-all ${
                           item.isCenter
-                            ? 'dark:bg-neonCyan dark:text-black bg-slate-900 text-white border-neonCyan shadow-[0_0_20px_rgba(0,255,255,0.6)] font-bold'
-                            : `dark:bg-[#070b19]/95 bg-slate-900 text-white ${item.borderColor} ${item.glow}`
+                            ? 'dark:bg-neonCyan dark:text-black dark:border-neonCyan bg-cyan-400 text-slate-950 border-slate-950 shadow-[4px_4px_0_#0f172a] font-black'
+                            : `dark:bg-[#070b19]/95 bg-white dark:text-white text-slate-950 border-slate-900 dark:border-white/20 ${item.glow}`
                         }`}
                       >
                         <span className={`material-symbols-outlined text-lg ${
-                          item.isCenter ? 'text-black dark:text-black' : item.textColor
+                          item.isCenter ? 'text-slate-950 dark:text-black' : item.textColor
                         }`}>
                           {item.icon}
                         </span>
@@ -571,14 +571,14 @@ const Navbar = () => {
                           handleNavClick(e, item.hash);
                           setMoreMenuOpen(false);
                         }}
-                        className={`flex items-center gap-2.5 py-2 px-3.5 border-2 rounded-none whitespace-nowrap shadow-[3px_3px_0_#0f172a] transition-all ${
+                        className={`flex items-center gap-2.5 py-2 px-3.5 border-2 rounded-none whitespace-nowrap transition-all ${
                           item.isCenter
-                            ? 'dark:bg-neonCyan dark:text-black bg-slate-900 text-white border-neonCyan shadow-[0_0_20px_rgba(0,255,255,0.6)] font-bold'
-                            : `dark:bg-[#070b19]/95 bg-slate-900 text-white ${item.borderColor} ${item.glow}`
+                            ? 'dark:bg-neonCyan dark:text-black dark:border-neonCyan bg-cyan-400 text-slate-950 border-slate-950 shadow-[4px_4px_0_#0f172a] font-black'
+                            : `dark:bg-[#070b19]/95 bg-white dark:text-white text-slate-950 border-slate-900 dark:border-white/20 ${item.glow}`
                         }`}
                       >
                         <span className={`material-symbols-outlined text-lg ${
-                          item.isCenter ? 'text-black dark:text-black' : item.textColor
+                          item.isCenter ? 'text-slate-950 dark:text-black' : item.textColor
                         }`}>
                           {item.icon}
                         </span>
