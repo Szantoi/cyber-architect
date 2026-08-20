@@ -244,6 +244,7 @@ export function initDatabase() {
       dimensions TEXT DEFAULT '{}',
       visibility TEXT DEFAULT 'public',
       audio_url TEXT DEFAULT '',
+      drive_path TEXT NOT NULL DEFAULT '',
       drive_file_id TEXT DEFAULT '',
       drive_modified_time TEXT DEFAULT '',
       embedding TEXT DEFAULT '[]',
@@ -267,6 +268,26 @@ export function initDatabase() {
     if (!cols.includes('embedding')) db.exec("ALTER TABLE blog_posts ADD COLUMN embedding TEXT DEFAULT '[]'");
   } catch (mErr) {
     // Migration safe check
+  }
+
+  // Keep the Drive hierarchy as display metadata. This is intentionally an
+  // additive migration: existing records retain an empty path until the next
+  // source synchronization, and a second initialization performs no write.
+  const hasDrivePathColumn = () => db.prepare('PRAGMA table_info(blog_posts)')
+    .all()
+    .some(column => column.name === 'drive_path');
+  if (!hasDrivePathColumn()) {
+    try {
+      db.transaction(() => {
+        db.exec("ALTER TABLE blog_posts ADD COLUMN drive_path TEXT NOT NULL DEFAULT ''");
+      })();
+    } catch (error) {
+      // A concurrent initializer may have completed the same additive change
+      // between our schema check and ALTER TABLE. Re-read before failing.
+      if (!hasDrivePathColumn()) {
+        throw new Error('[DB_MIGRATION] Failed to add blog_posts.drive_path', { cause: error });
+      }
+    }
   }
 
 

@@ -5957,6 +5957,7 @@ export const driveSyncService = {
           visibility,
           audio_url,
           video_url,
+          drive_path: doc.folderPath || '',
           drive_file_id: sourceId,
           drive_modified_time: doc.modifiedTime || '',
           read_time,

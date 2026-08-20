@@ -39,11 +39,55 @@ export const getMultiCategoriesForDoc = (item) => {
   return Array.from(categories);
 };
 
+const DRIVE_ROOT_DISPLAY_NAMES = {
+  'zart-vallalati-rag': 'ZÁRT VÁLLALATI RAG',
+  'ai-es-adatbiztonsag': 'AI ÉS ADATBIZTONSÁG',
+  'cad-automatizacio': 'CAD AUTOMATIZÁCIÓ',
+  'folyamatoptimalizalas-es-excel': 'FOLYAMATOPTIMALIZÁLÁS ÉS EXCEL',
+  'belso-kutatasok-privat': 'BELSŐ KUTATÁSOK · PRIVÁT'
+};
+
+const canonicalizeDriveSegment = (value) => String(value || '')
+  .normalize('NFC')
+  .trim()
+  .toLocaleLowerCase('hu-HU')
+  .replace(/[_\s]+/g, '-')
+  .replace(/-+/g, '-')
+  .replace(/^\d+-/, '');
+
+const getDriveRootFolder = (item) => {
+  const rawPath = String(item?.drive_path || item?.drive_folder || '').trim();
+  if (!rawPath) return '';
+
+  const segments = rawPath
+    .normalize('NFC')
+    .split(/[\\/]+/)
+    .map(segment => segment.trim())
+    .filter(Boolean);
+  const rootSegment = segments.find(segment => !/^(knowledge|knowledgebase|blog)$/i.test(segment));
+  if (!rootSegment) return '';
+
+  const canonicalSegment = canonicalizeDriveSegment(rootSegment);
+  if (DRIVE_ROOT_DISPLAY_NAMES[canonicalSegment]) {
+    return DRIVE_ROOT_DISPLAY_NAMES[canonicalSegment];
+  }
+
+  return rootSegment
+    .replace(/^\d+[_\-\s]*/, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleUpperCase('hu-HU');
+};
+
 export const getTreeFolders = (item, pivotMode = 'drive') => {
   if (!item) return ['Általános'];
 
   if (pivotMode === 'drive') {
-    return [(item.drive_folder || item.category || 'Általános').split(',')[0].trim()];
+    // The Drive pivot intentionally groups every descendant document under
+    // its real first-level Drive folder. `category` remains a semantic/content
+    // field and is used only for records that predate Drive-path tracking.
+    return [getDriveRootFolder(item) || (item.category || 'Általános').split(',')[0].trim()];
   }
   if (pivotMode === 'topic') {
     return getMultiCategoriesForDoc(item);

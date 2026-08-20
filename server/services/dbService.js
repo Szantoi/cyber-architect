@@ -14,6 +14,13 @@ const TERMINALS_ROOT = path.join(ROOT_PROJECT_DIR, 'terminals');
 const CANONICAL_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_SLUG_LENGTH = 160;
 
+function normalizeDrivePath(value) {
+  return String(value || '')
+    .normalize('NFC')
+    .replace(/[\\/]+/g, '/')
+    .replace(/^\/+|\/+$/g, '');
+}
+
 function assertCanonicalSlug(value) {
   const normalized = String(value || '').trim();
   if (
@@ -572,6 +579,7 @@ export const dbService = {
     return {
       ...post,
       content_type: post.content_type || 'blog',
+      drive_path: normalizeDrivePath(post.drive_path),
       dimensions
     };
   },
@@ -589,6 +597,7 @@ export const dbService = {
     visibility = 'public',
     audio_url = '',
     video_url = '',
+    drive_path = '',
     drive_file_id = '',
     drive_modified_time = '',
     embedding = [],
@@ -613,8 +622,8 @@ export const dbService = {
     let info;
     if (id) {
       info = db.prepare(`
-        INSERT INTO blog_posts (id, project_id, content_type, slug, title, summary, content, category, dimensions, visibility, audio_url, video_url, drive_file_id, drive_modified_time, embedding, read_time, created_at, published)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO blog_posts (id, project_id, content_type, slug, title, summary, content, category, dimensions, visibility, audio_url, video_url, drive_path, drive_file_id, drive_modified_time, embedding, read_time, created_at, published)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         Number(id),
         String(project_id || 'prj_general'),
@@ -628,6 +637,7 @@ export const dbService = {
         visibility === 'private' ? 'private' : 'public',
         String(audio_url || ''),
         String(video_url || ''),
+        normalizeDrivePath(drive_path),
         String(drive_file_id || '').trim(),
         String(drive_modified_time || ''),
         embedJson,
@@ -637,8 +647,8 @@ export const dbService = {
       );
     } else {
       info = db.prepare(`
-        INSERT INTO blog_posts (project_id, content_type, slug, title, summary, content, category, dimensions, visibility, audio_url, video_url, drive_file_id, drive_modified_time, embedding, read_time, created_at, published)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO blog_posts (project_id, content_type, slug, title, summary, content, category, dimensions, visibility, audio_url, video_url, drive_path, drive_file_id, drive_modified_time, embedding, read_time, created_at, published)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         String(project_id || 'prj_general'),
         assertContentType(content_type || 'blog'),
@@ -651,6 +661,7 @@ export const dbService = {
         visibility === 'private' ? 'private' : 'public',
         String(audio_url || ''),
         String(video_url || ''),
+        normalizeDrivePath(drive_path),
         String(drive_file_id || '').trim(),
         String(drive_modified_time || ''),
         embedJson,
@@ -687,6 +698,7 @@ export const dbService = {
     visibility,
     audio_url,
     video_url,
+    drive_path,
     drive_file_id,
     drive_modified_time,
     embedding,
@@ -724,7 +736,7 @@ export const dbService = {
 
     db.prepare(`
       UPDATE blog_posts
-      SET project_id = ?, content_type = ?, slug = ?, title = ?, summary = ?, content = ?, category = ?, dimensions = ?, visibility = ?, audio_url = ?, video_url = ?, drive_file_id = ?, drive_modified_time = ?, embedding = ?, read_time = ?, published = ?
+      SET project_id = ?, content_type = ?, slug = ?, title = ?, summary = ?, content = ?, category = ?, dimensions = ?, visibility = ?, audio_url = ?, video_url = ?, drive_path = ?, drive_file_id = ?, drive_modified_time = ?, embedding = ?, read_time = ?, published = ?
       WHERE id = ?
     `).run(
       project_id !== undefined ? String(project_id) : prevState.project_id,
@@ -738,6 +750,7 @@ export const dbService = {
       visibility !== undefined ? (visibility === 'private' ? 'private' : 'public') : prevState.visibility,
       audio_url !== undefined ? String(audio_url) : prevState.audio_url,
       video_url !== undefined ? String(video_url) : prevState.video_url,
+      drive_path !== undefined ? normalizeDrivePath(drive_path) : normalizeDrivePath(prevState.drive_path),
       drive_file_id !== undefined ? String(drive_file_id).trim() : prevState.drive_file_id,
       drive_modified_time !== undefined ? String(drive_modified_time) : prevState.drive_modified_time,
       embedJson,

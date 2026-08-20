@@ -34,6 +34,26 @@ describe('Information Architecture & Taxonomy Unit Tests', () => {
       expect(folders).toEqual(['01_AI_es_Adatbiztonsag']);
     });
 
+    it('groups descendant documents under their real Drive root rather than frontmatter category', () => {
+      const firstChild = {
+        ...sampleDoc,
+        category: 'ARCHITEKTÚRA',
+        drive_path: 'knowledge/01_Zart_Vallalati_RAG/zero-raw-query-es-sqlite-wal-adatbiztonsag'
+      };
+      const secondChild = {
+        ...sampleDoc,
+        category: 'BIZTONSÁG',
+        drive_path: 'knowledge/01_Zart_Vallalati_RAG/nexus-knowledge-service-multi-agent-flotta'
+      };
+
+      expect(getTreeFolders(firstChild, 'drive')).toEqual(['ZÁRT VÁLLALATI RAG']);
+      expect(getTreeFolders(secondChild, 'drive')).toEqual(['ZÁRT VÁLLALATI RAG']);
+    });
+
+    it('keeps the category fallback for records without a persisted Drive path', () => {
+      expect(getTreeFolders({ ...sampleDoc, drive_path: '' }, 'drive')).toEqual(['01_AI_es_Adatbiztonsag']);
+    });
+
     it('groups by semantic topic in topic mode', () => {
       const folders = getTreeFolders(sampleDoc, 'topic');
       expect(folders).toContain('AI & RAG RENDSZEREK');

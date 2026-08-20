@@ -86,6 +86,7 @@ knowledgeRouter.get('/docs', (req, res) => {
       dimensions: p.dimensions || {},
       read_time: p.read_time || '5 PERC',
       updated_at: p.created_at ? p.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+      drive_path: p.drive_path || '',
       audio_url: p.audio_url,
       video_url: p.video_url || ''
     }));
@@ -190,6 +191,7 @@ knowledgeRouter.get('/docs/search', (req, res) => {
         dimensions: p.dimensions || {},
         read_time: p.read_time || '5 PERC',
         updated_at: p.created_at ? p.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        drive_path: p.drive_path || '',
         audio_url: p.audio_url,
         video_url: p.video_url || ''
       };
@@ -255,6 +257,7 @@ knowledgeRouter.get('/docs/:slug', (req, res) => {
       category: post.category,
       project_name: post.project_name || 'Általános',
       updated_at: post.created_at ? post.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+      drive_path: post.drive_path || '',
       audio_url: post.audio_url,
       video_url: post.video_url || ''
     });
