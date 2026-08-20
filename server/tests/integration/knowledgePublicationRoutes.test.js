@@ -82,4 +82,17 @@ describe('Public knowledge publication guard', () => {
       });
     }
   });
+
+  it('does not surface unpublished or private documents through public search', async () => {
+    const response = await request(app)
+      .get('/api/docs/search')
+      .query({ q: 'Publication guard' });
+
+    expect(response.status).toBe(200);
+    const matchedSlugs = response.body.docs.map(doc => doc.slug);
+
+    expect(matchedSlugs).toContain(slugs.publishedPublic);
+    expect(matchedSlugs).not.toContain(slugs.unpublishedPublic);
+    expect(matchedSlugs).not.toContain(slugs.publishedPrivate);
+  });
 });

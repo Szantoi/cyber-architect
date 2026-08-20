@@ -978,7 +978,7 @@ export const dbService = {
   // ==========================================
   // 7. KNOWLEDGE BASE RAG ENGINE (Isolated Scope)
   // ==========================================
-  searchKnowledge({ query = '', projectId = 'all', iparag, technologia, celcsoport, visibility = 'public', mode: _mode = 'hybrid', limit = 20, contentType = 'knowledge' } = {}) {
+  searchKnowledge({ query = '', projectId = 'all', iparag, technologia, celcsoport, visibility = 'public', publishedOnly = false, mode: _mode = 'hybrid', limit = 20, contentType = 'knowledge' } = {}) {
     let sql = `
       SELECT b.*, kp.name as project_name, kp.color as project_color, kp.icon as project_icon
       FROM blog_posts b
@@ -998,6 +998,10 @@ export const dbService = {
       sql += " AND b.visibility = 'public'";
     } else if (visibility === 'private') {
       sql += " AND b.visibility = 'private'";
+    }
+
+    if (publishedOnly) {
+      sql += ' AND b.published = 1';
     }
 
     // 2. Project Filter

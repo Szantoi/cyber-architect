@@ -50,6 +50,7 @@ knowledgeRouter.get('/knowledge/search', (req, res) => {
       technologia,
       celcsoport,
       visibility: 'public',
+      publishedOnly: true,
       contentType: 'knowledge',
       limit: Number(limit) || 30
     });
@@ -80,6 +81,9 @@ knowledgeRouter.get('/docs', (req, res) => {
       slug: p.slug,
       title: p.title,
       summary: p.summary,
+      content_type: p.content_type,
+      visibility: p.visibility,
+      published: Number(p.published),
       category: p.category || 'Tudástár',
       project_id: p.project_id,
       project_name: p.project_name || 'Általános Munkatér',
@@ -108,7 +112,8 @@ knowledgeRouter.get('/docs/search', (req, res) => {
       technologia: technologia && technologia !== 'ALL' ? String(technologia) : undefined,
       celcsoport: celcsoport && celcsoport !== 'ALL' ? String(celcsoport) : undefined,
       projectId: project_id && project_id !== 'ALL' ? String(project_id) : 'all',
-      visibility: 'public'
+      visibility: 'public',
+      publishedOnly: true
     });
 
     const normalize = s => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -179,6 +184,9 @@ knowledgeRouter.get('/docs/search', (req, res) => {
         slug: p.slug,
         title: p.title,
         summary: p.summary,
+        content_type: p.content_type,
+        visibility: p.visibility,
+        published: Number(p.published),
         matchSnippet,
         matchLocation,
         matchedTokens,
