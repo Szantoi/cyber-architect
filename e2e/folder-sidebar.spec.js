@@ -114,6 +114,43 @@ test.describe('Folder navigation discoverability and progressive disclosure', ()
     const sidebar = page.getByTestId('vault-folder-sidebar');
     const category = sidebar.locator(`[data-testid="folder-category"][data-category="${MOCK_CATEGORY}"]`);
 
+    const firstCard = page.getByTestId('vault-result-card').first();
+    await expect.poll(
+      async () => firstCard.evaluate((element) => window.getComputedStyle(element).transform)
+    ).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+    const cardMotionSamples = page.evaluate(async () => {
+      const card = document.querySelector('[data-testid="vault-result-card"]');
+      if (!card) return [];
+
+      const samples = [];
+      const until = performance.now() + 350;
+
+      await new Promise((resolve) => {
+        const sample = () => {
+          const style = window.getComputedStyle(card);
+          samples.push({ transform: style.transform, opacity: style.opacity });
+
+          if (performance.now() < until) {
+            requestAnimationFrame(sample);
+          } else {
+            resolve();
+          }
+        };
+
+        requestAnimationFrame(sample);
+      });
+
+      return samples;
+    });
+
+    await sidebar.locator('button[aria-controls^="vault-folder-items-"]').first().click();
+    const cardMotionStates = await cardMotionSamples;
+    expect(cardMotionStates).not.toHaveLength(0);
+    const cardMotionSummary = [...new Set(cardMotionStates.map(({ transform, opacity }) => `${transform} / ${opacity}`))].join(', ');
+    expect(cardMotionStates.every(({ transform, opacity }) => (
+      (transform === 'none' || transform === 'matrix(1, 0, 0, 1, 0, 0)') && opacity === '1'
+    )), cardMotionSummary).toBe(true);
+
     await category.click();
     await sidebar.getByTestId('folder-load-more').click();
 
