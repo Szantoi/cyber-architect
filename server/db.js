@@ -14,7 +14,15 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-export const dbPath = process.env.SQLITE_DB_PATH || path.join(dataDir, 'portfolio.sqlite');
+const defaultDbPath = path.join(dataDir, 'portfolio.sqlite');
+
+// Tests must opt in to an isolated database. Failing closed here prevents a
+// missing or misordered test setup from ever opening the developer database.
+if (process.env.NODE_ENV === 'test' && !process.env.SQLITE_DB_PATH) {
+  throw new Error('[DB_SAFETY] SQLITE_DB_PATH must point to an isolated database while NODE_ENV=test.');
+}
+
+export const dbPath = process.env.SQLITE_DB_PATH || defaultDbPath;
 export const db = new Database(dbPath);
 
 // Enable WAL mode for high concurrent performance
@@ -44,7 +52,9 @@ export function initDatabase() {
   `);
   try {
     db.exec('ALTER TABLE skills ADD COLUMN query TEXT DEFAULT ""');
-  } catch {}
+  } catch {
+    // Column already exists on initialized databases.
+  }
 
   // 3. Projects Table (The Grid)
   db.exec(`
@@ -342,14 +352,16 @@ function seedData() {
     }
   }
 
-  // Seed / Refresh Projects
-  db.exec('DELETE FROM projects');
-  const insertProject = db.prepare(`
-    INSERT OR REPLACE INTO projects (id, title, desc, img, tags, status, addr, sec_auth, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+  // Seed projects only for a brand-new/empty database. Initialization must
+  // never replace records subsequently maintained through the admin UI.
+  const existingProjectsCount = db.prepare('SELECT count(*) as count FROM projects').get().count;
+  if (existingProjectsCount === 0) {
+    const insertProject = db.prepare(`
+      INSERT INTO projects (id, title, desc, img, tags, status, addr, sec_auth, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-  const initialProjects = [
+    const initialProjects = [
     {
       id: "PRJ_01",
       title: "DOCCAPTURE // BELSŐ RAG",
@@ -394,10 +406,11 @@ function seedData() {
       sec_auth: "DÖNTÉSTÁMOGATÁS",
       sort_order: 4
     }
-  ];
+    ];
 
-  for (const p of initialProjects) {
-    insertProject.run(p.id, p.title, p.desc, p.img, p.tags, p.status, p.addr, p.sec_auth, p.sort_order);
+    for (const p of initialProjects) {
+      insertProject.run(p.id, p.title, p.desc, p.img, p.tags, p.status, p.addr, p.sec_auth, p.sort_order);
+    }
   }
 
   // Seed Knowledge Projects (Workspaces)
@@ -447,10 +460,10 @@ function seedData() {
     }
   }
 
-  // Seed / Refresh Blog Posts & Knowledge Items
+  // Seed blog/knowledge content only when the table is completely empty.
+  // Even a partially populated table belongs to the user and is preserved.
   const blogCount = db.prepare('SELECT count(*) as count FROM blog_posts').get().count;
-  if (blogCount === 0 || blogCount <= 2) {
-    db.exec('DELETE FROM blog_posts');
+  if (blogCount === 0) {
     const insertBlog = db.prepare(`
       INSERT INTO blog_posts (project_id, content_type, slug, title, summary, content, category, dimensions, visibility, audio_url, read_time, created_at, published)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

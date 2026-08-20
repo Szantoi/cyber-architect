@@ -1,23 +1,17 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
-    "src/main.jsx",
-    "server/index.js",
-    "server/mcp/server.js",
-    "server/cli/portfolio-cli.js",
     "server/scripts/*.js",
     "server/tests/*.js"
   ],
   "project": [
-    "src/**/*.{js,jsx}",
+    "src/**/*.{js,jsx,css}",
     "server/**/*.js"
   ],
   "ignoreDependencies": [
-    "autoprefixer",
     "postcss",
-    "husky",
-    "lint-staged",
-    "rehype-autolink-headings"
+    "lint-staged"
   ],
+  "treatConfigHintsAsErrors": true,
   "ignoreExportsUsedInFile": true
 }

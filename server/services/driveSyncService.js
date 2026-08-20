@@ -3,8 +3,9 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'url';
-import dbService from './dbService.js';
+import { dbService } from './dbService.js';
 import { logger } from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,6 +18,15 @@ const DEFAULT_DRIVE_DIR = path.resolve(CYBER_ARCHITECT_DIR, 'KnowledgeBase');
 const DEFAULT_BLOG_DIR = path.resolve(CYBER_ARCHITECT_DIR, 'Blog');
 const OAUTH_CLIENT_PATH = path.resolve(CONFIG_DIR, 'google-oauth-client.json');
 const OAUTH_TOKENS_PATH = path.resolve(CONFIG_DIR, 'drive-tokens.json');
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const MAX_PENDING_OAUTH_STATES = 100;
+const pendingOAuthStates = new Map();
+
+function pruneExpiredOAuthStates(now = Date.now()) {
+  for (const [state, pending] of pendingOAuthStates) {
+    if (pending.expiresAt <= now) pendingOAuthStates.delete(state);
+  }
+}
 
 
 // Security Denylist: Never ever scan or write into internal development / architecture folders
@@ -203,7 +213,37 @@ export const driveSyncService = {
     logger.success('[DRIVE_OAUTH] Google Drive OAuth tokens saved successfully');
   },
 
-  getAuthUrl() {
+  createOAuthState(returnOrigin = null) {
+    const now = Date.now();
+    pruneExpiredOAuthStates(now);
+
+    while (pendingOAuthStates.size >= MAX_PENDING_OAUTH_STATES) {
+      const oldestState = pendingOAuthStates.keys().next().value;
+      pendingOAuthStates.delete(oldestState);
+    }
+
+    const state = crypto.randomBytes(32).toString('base64url');
+    pendingOAuthStates.set(state, {
+      expiresAt: now + OAUTH_STATE_TTL_MS,
+      returnOrigin: typeof returnOrigin === 'string' ? returnOrigin : null
+    });
+    return state;
+  },
+
+  consumeOAuthState(state) {
+    if (typeof state !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(state)) return null;
+
+    const pending = pendingOAuthStates.get(state);
+    if (!pending) return null;
+
+    // OAuth state values are single-use, including failed or incomplete callbacks.
+    pendingOAuthStates.delete(state);
+    if (pending.expiresAt <= Date.now()) return null;
+
+    return { returnOrigin: pending.returnOrigin };
+  },
+
+  getAuthUrl({ returnOrigin = null } = {}) {
     const client = this.getOAuthClient();
     if (!client || !client.client_id) {
       throw new Error('MISSING_OAUTH_CLIENT_CONFIG: google-oauth-client.json not found');
@@ -211,10 +251,15 @@ export const driveSyncService = {
 
     const scope = encodeURIComponent('https://www.googleapis.com/auth/drive');
     const redirectUri = encodeURIComponent(client.redirect_uri);
-    return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${client.client_id}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&access_type=offline&prompt=consent`;
+    const state = encodeURIComponent(this.createOAuthState(returnOrigin));
+    return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(client.client_id)}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&access_type=offline&prompt=consent&state=${state}`;
   },
 
   async exchangeCodeForTokens(code) {
+    if (typeof code !== 'string' || !code.trim()) {
+      throw new Error('MISSING_OAUTH_AUTHORIZATION_CODE');
+    }
+
     const client = this.getOAuthClient();
     if (!client) throw new Error('MISSING_OAUTH_CLIENT_CONFIG');
 
@@ -222,7 +267,7 @@ export const driveSyncService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        code,
+        code: code.trim(),
         client_id: client.client_id,
         client_secret: client.client_secret,
         redirect_uri: client.redirect_uri,
@@ -927,5 +972,3 @@ export const driveSyncService = {
     return results;
   }
 };
-
-export default driveSyncService;

@@ -199,7 +199,6 @@ const Navbar = () => {
   const isKnowledgeActive = location.pathname.startsWith('/knowledge') || location.pathname.startsWith('/docs');
   const isBlogActive = location.pathname.startsWith('/blog');
   const isMcpActive = location.pathname.startsWith('/mcp') || location.pathname.startsWith('/agent');
-  const isArchActive = location.pathname.startsWith('/architecture') || location.pathname.startsWith('/rendszerterv');
 
   return (
     <>
@@ -514,12 +513,8 @@ const Navbar = () => {
             <div className={`fixed bottom-16 pointer-events-auto ${
               handMode === 'right' ? 'right-5' : 'left-5'
             }`}>
-              {rotaryItems.map((item, idx) => {
+              {rotaryItems.map((item) => {
                 if (!item.isVisible) return null;
-
-                const isItemActive = item.to
-                  ? location.pathname.startsWith(item.to)
-                  : location.hash === item.hash;
 
                 return (
                   <motion.div

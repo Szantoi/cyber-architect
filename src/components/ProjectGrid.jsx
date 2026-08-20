@@ -514,11 +514,11 @@ const ProjectGrid = () => {
         
         {/* Header with HR/CEO vs Tech/Architect Toggle */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6 border-b-2 dark:border-white/10 border-slate-900 pb-6 font-mono">
-          <div>
-            <span className="text-neonCyan text-xs font-black uppercase tracking-[0.5em] block mb-1">
+          <div className="w-full min-w-0 md:w-auto">
+            <span className="block max-w-full break-words text-[10px] sm:text-xs text-neonCyan font-black uppercase tracking-[0.18em] sm:tracking-[0.5em] leading-relaxed mb-1">
               // MÉRNÖKI_FEJLESZTÉSEK_ÉS_PROJEKTEK
             </span>
-            <h2 className="text-4xl md:text-5xl font-headline font-black italic uppercase text-on-surface mt-1 tracking-tighter">
+            <h2 className="break-words text-4xl md:text-5xl font-headline font-black italic uppercase text-on-surface mt-1 tracking-tighter">
               Projektek & Rendszerek.
             </h2>
             <p className="font-body dark:text-slate-400 text-slate-700 text-sm max-w-2xl mt-1.5">
@@ -528,7 +528,7 @@ const ProjectGrid = () => {
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
             {/* View Mode Switcher */}
-            <div className="flex border-2 dark:border-white/15 border-slate-900 p-1 dark:bg-slate-950 bg-slate-200">
+            <div className="flex flex-wrap border-2 dark:border-white/15 border-slate-900 p-1 dark:bg-slate-950 bg-slate-200">
               <button
                 type="button"
                 onClick={() => setViewMode('hr')}

@@ -1,7 +1,7 @@
 // server/tests/knowledge_verify.js
 // Automated verification for Knowledge Projects, Hybrid Search & Privacy Boundaries
 
-import dbService from '../services/dbService.js';
+import { dbService } from '../services/dbService.js';
 
 console.log('====================================================');
 console.log('CYBER-ARCHITECT // KNOWLEDGE & HYBRID SEARCH SUITE');

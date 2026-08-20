@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+const VALID_ADMIN_PIN = process.env.CYBER_ARCHITECT_E2E_ADMIN_PIN || 'E2e-Admin-Pin-2026!';
+
 test.describe('Admin Portal Journey E2E Suite', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -31,8 +33,8 @@ test.describe('Admin Portal Journey E2E Suite', () => {
     const pinInput = page.locator('input[type="password"]').first();
     await expect(pinInput).toBeVisible({ timeout: 10000 });
 
-    // Enter default test PIN
-    await pinInput.fill('1337');
+    // Enter the isolated test PIN configured by Playwright.
+    await pinInput.fill(VALID_ADMIN_PIN);
     const loginButton = page.getByRole('button', { name: /KONZOL MEGNYITÁSA/i });
     await loginButton.click();
 
@@ -57,7 +59,7 @@ test.describe('Admin Portal Journey E2E Suite', () => {
     const pinInput = page.locator('input[type="password"]').first();
     await expect(pinInput).toBeVisible({ timeout: 10000 });
 
-    await pinInput.fill('1337');
+    await pinInput.fill(VALID_ADMIN_PIN);
     const loginButton = page.getByRole('button', { name: /KONZOL MEGNYITÁSA/i });
     await loginButton.click();
 

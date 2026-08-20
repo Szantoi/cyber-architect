@@ -39,7 +39,7 @@ function hashTerm(term, vectorSize) {
   return Math.abs(hash) % vectorSize;
 }
 
-export const embeddingService = {
+const embeddingService = {
   VECTOR_SIZE: 128,
 
   /**

@@ -3,6 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useContent } from '../context/ContentContext';
 import RagEvidenceModal from './common/RagEvidenceModal';
 
+const LOG_POOL = [
+  '[OK] MANUÁLIS_EXCEL_FOLYAMAT_KIVÁLTVA',
+  '[OK] DOKUMENTUM_VEKTORIZÁLÁS_BEFEJEZVE',
+  '[OK] ADATBÁZIS_SZINKRONIZÁCIÓ_AKTÍV',
+  '[OK] BELSŐ_LLM_VÁLASZIDŐ_OPTIMALIZÁLVA',
+  '[INFO] BIZTONSÁGOS_SZEREPKÖRALAPÚ_HOZZÁFÉRÉS',
+  '[OK] MUNKATÁRSAK_BETANÍTÁSA_FOLYAMATBAN'
+];
+
 const Diagnostics = () => {
   const { settings } = useContent();
 
@@ -18,19 +27,10 @@ const Diagnostics = () => {
     query: ''
   });
 
-  const logPool = [
-    '[OK] MANUÁLIS_EXCEL_FOLYAMAT_KIVÁLTVA',
-    '[OK] DOKUMENTUM_VEKTORIZÁLÁS_BEFEJEZVE',
-    '[OK] ADATBÁZIS_SZINKRONIZÁCIÓ_AKTÍV',
-    '[OK] BELSŐ_LLM_VÁLASZIDŐ_OPTIMALIZÁLVA',
-    '[INFO] BIZTONSÁGOS_SZEREPKÖRALAPÚ_HOZZÁFÉRÉS',
-    '[OK] MUNKATÁRSAK_BETANÍTÁSA_FOLYAMATBAN'
-  ];
-
   useEffect(() => {
     const interval = setInterval(() => {
       setLogs(prev => {
-        const nextLog = logPool[Math.floor(Math.random() * logPool.length)];
+        const nextLog = LOG_POOL[Math.floor(Math.random() * LOG_POOL.length)];
         const newLogs = [...prev.slice(-4), nextLog];
         return newLogs;
       });
@@ -109,16 +109,16 @@ const Diagnostics = () => {
             className="relative bg-[var(--surface-panel)] border-2 dark:border-white/10 border-slate-900 rounded-none shadow-[4px_4px_0_#0f172a] dark:shadow-2xl overflow-hidden group terminal-glow"
           >
             {/* Tactical Terminal Header Bar */}
-            <div className="dark:bg-slate-900 bg-slate-200 px-4 py-2 flex items-center justify-between border-b-2 dark:border-white/10 border-slate-900">
-              <div className="flex items-center gap-3">
+            <div className="dark:bg-slate-900 bg-slate-200 px-3 sm:px-4 py-2 flex items-center justify-between gap-2 border-b-2 dark:border-white/10 border-slate-900">
+              <div className="flex min-w-0 items-center gap-2 sm:gap-3">
                 <div className="flex gap-1.5">
                   <div className="w-2 h-2 rounded-full bg-neonCyan animate-flicker"></div>
                   <div className="w-2 h-2 rounded-full bg-neonMagenta"></div>
                   <div className="w-2 h-2 rounded-full bg-tertiary"></div>
                 </div>
-                <span className="font-mono text-[10px] dark:text-slate-400 text-slate-600 uppercase tracking-widest font-bold">FOLYAMAT_VEZÉRLŐ.LOG</span>
+                <span className="min-w-0 truncate font-mono text-[9px] sm:text-[10px] dark:text-slate-400 text-slate-600 uppercase tracking-[0.08em] sm:tracking-widest font-bold">FOLYAMAT_VEZÉRLŐ.LOG</span>
               </div>
-              <div className="font-mono text-[9px] text-neonCyan font-bold">ÁLLAPOT: AKTÍV</div>
+              <div className="shrink-0 whitespace-nowrap font-mono text-[8px] sm:text-[9px] text-neonCyan font-bold">ÁLLAPOT: AKTÍV</div>
             </div>
             
             <div className="p-8 font-mono text-xs md:text-sm leading-relaxed relative min-h-[300px] flex flex-col">
@@ -132,7 +132,7 @@ const Diagnostics = () => {
                       initial={{ opacity: 0, x: -5 }}
                       animate={{ opacity: 1 - (logs.length - 1 - i) * 0.2, x: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className={`${log.includes('[INFO]') ? 'text-neonMagenta' : 'text-neonCyan'} font-mono font-bold`}
+                      className={`${log.includes('[INFO]') ? 'text-neonMagenta' : 'text-neonCyan'} break-words font-mono font-bold`}
                     >
                       {log}
                     </motion.p>
@@ -148,11 +148,11 @@ const Diagnostics = () => {
                 </div>
               </div>
 
-              <div className="mt-8 pt-8 border-t dark:border-white/5 border-slate-200 grid grid-cols-2 gap-8">
+              <div className="mt-8 pt-8 border-t dark:border-white/5 border-slate-200 grid grid-cols-2 gap-4 sm:gap-8">
                 <div>
-                  <div className="flex justify-between items-end mb-1">
-                    <span className="dark:text-slate-500 text-slate-500 text-[10px] uppercase tracking-wider font-bold">FELDOLGOZÁSI IDŐ</span>
-                    <span className="text-tertiary font-bold animate-flicker">0.4 MP</span>
+                  <div className="flex flex-wrap justify-between items-end gap-x-1 mb-1">
+                    <span className="dark:text-slate-500 text-slate-500 text-[9px] sm:text-[10px] uppercase tracking-normal sm:tracking-wider font-bold">FELDOLGOZÁSI IDŐ</span>
+                    <span className="text-tertiary text-xs sm:text-sm font-bold animate-flicker">0.4 MP</span>
                   </div>
                   <div className="h-1 dark:bg-white/5 bg-slate-200 overflow-hidden">
                     <motion.div 
@@ -163,9 +163,9 @@ const Diagnostics = () => {
                   </div>
                 </div>
                 <div>
-                  <div className="flex justify-between items-end mb-1">
-                    <span className="dark:text-slate-500 text-slate-500 text-[10px] uppercase tracking-wider font-bold">ADATBIZTONSÁG</span>
-                    <span className="text-tertiary font-bold">100% ZÁRT</span>
+                  <div className="flex flex-wrap justify-between items-end gap-x-1 mb-1">
+                    <span className="dark:text-slate-500 text-slate-500 text-[9px] sm:text-[10px] uppercase tracking-normal sm:tracking-wider font-bold">ADATBIZTONSÁG</span>
+                    <span className="text-tertiary text-xs sm:text-sm font-bold">100% ZÁRT</span>
                   </div>
                   <div className="h-1 dark:bg-white/5 bg-slate-200 overflow-hidden">
                     <motion.div 
@@ -244,4 +244,3 @@ const Diagnostics = () => {
 };
 
 export default Diagnostics;
-

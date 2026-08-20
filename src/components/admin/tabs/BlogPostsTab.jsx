@@ -11,7 +11,6 @@ const BlogPostsTab = ({
   onDeleteBlog,
   showMarkdownCheatSheet,
   setShowMarkdownCheatSheet,
-  onConnectDrive,
   onDriveSync,
   isSyncing,
   syncResult,

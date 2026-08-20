@@ -22,18 +22,19 @@ ENV NODE_ENV=production
 ENV PORT=3001
 ENV SQLITE_DB_PATH=/app/data/portfolio.sqlite
 
-# Install required tools for native SQLite builds
-RUN apk add --no-cache python3 make g++ sqlite
-
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+    && apk add --no-cache sqlite \
+    && npm ci --omit=dev \
+    && apk del .build-deps
 
 # Copy backend files and compiled frontend assets
 COPY server ./server
 COPY --from=builder /app/dist ./dist
 
 # Create persistent storage folder for SQLite database and backups
-RUN mkdir -p /app/data /app/data/backups
+RUN mkdir -p /app/data /app/data/backups \
+    && chown -R node:node /app/data
 
 EXPOSE 3001
 

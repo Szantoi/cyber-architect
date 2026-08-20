@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useContent } from '../../context/ContentContext';
 import { useAuth } from '../../context/AuthContext';
@@ -67,7 +67,7 @@ const AdminDashboard = () => {
   };
 
   // Load Admin Data when logged in
-  const loadAdminData = async () => {
+  const loadAdminData = useCallback(async () => {
     if (!adminToken) return;
     try {
       const bRes = await adminFetch('/api/admin/blog');
@@ -94,13 +94,13 @@ const AdminDashboard = () => {
     } catch (err) {
       console.error('Error loading admin data:', err);
     }
-  };
+  }, [adminToken, adminFetch]);
 
   useEffect(() => {
     if (adminToken) {
       loadAdminData();
     }
-  }, [adminToken]);
+  }, [adminToken, loadAdminData]);
 
   // 1. Settings Handler
   const handleSaveSettings = async (e) => {
@@ -238,25 +238,6 @@ const AdminDashboard = () => {
       }
     } catch {
       showNotify('DELETE_FAILED', true);
-    }
-  };
-
-  const handleConnectDrive = async () => {
-    try {
-      const res = await adminFetch('/api/admin/drive/auth-url');
-      if (res.ok) {
-        const data = await res.json();
-        const url = data.auth_url || data.authUrl;
-        if (url) {
-          window.location.href = url;
-        } else {
-          showNotify('NEM_SIKERÜLT_GENERÁLNI_AZ_AUTH_URL-T', true);
-        }
-      } else {
-        showNotify('HIBA_A_GOOGLE_KAPCSOLÓDÁSNÁL', true);
-      }
-    } catch {
-      showNotify('GOOGLE_CONNECT_ERROR', true);
     }
   };
 
@@ -428,8 +409,12 @@ const AdminDashboard = () => {
     if (res.ok) {
       showNotify('PIN_CODE_OVERRIDDEN_SUCCESSFULLY');
     } else {
-      showNotify('PIN_UPDATE_FAILED', true);
-      throw new Error('PIN_UPDATE_FAILED');
+      const errorPayload = await res.json().catch(() => null);
+      const validationMessage = errorPayload?.details?.[0]?.message
+        || errorPayload?.message
+        || 'A PIN kód frissítése sikertelen volt.';
+      showNotify(validationMessage, true);
+      throw new Error(validationMessage);
     }
   };
 
@@ -553,7 +538,6 @@ const AdminDashboard = () => {
             onDeleteBlog={handleDeleteBlog}
             showMarkdownCheatSheet={showMarkdownCheatSheet}
             setShowMarkdownCheatSheet={setShowMarkdownCheatSheet}
-            onConnectDrive={handleConnectDrive}
             onDriveSync={handleDriveSync}
             isSyncing={isSyncing}
             syncResult={syncResult}

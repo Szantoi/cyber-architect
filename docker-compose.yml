@@ -11,7 +11,8 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - SQLITE_DB_PATH=/app/data/portfolio.sqlite
-      - ADMIN_JWT_SECRET=${ADMIN_JWT_SECRET:-cyber_architect_prod_secret_token_1337}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a random value of at least 32 characters}
+      - ADMIN_DEFAULT_PIN=${ADMIN_DEFAULT_PIN:?ADMIN_DEFAULT_PIN must be set to a strong value of at least 12 characters}
     volumes:
       # Persistent SQLite WAL database and backup storage
       - portfolio_data:/app/data

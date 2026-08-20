@@ -23,11 +23,11 @@ module.exports = {
     },
     {
       name: 'no-orphans',
-      severity: 'warn',
+      severity: 'error',
       comment: 'Olyan fájlok, amelyeket senki nem importál és nem belépési pontok.',
       from: {
         orphan: true,
-        pathNot: ['^src/main\\.jsx$', '^server/index\\.js$', '^scripts/', '\\.test\\.(js|jsx)$', 'vite\\.config\\.js$', 'vitest\\.config\\.js$', 'eslint\\.config\\.js$']
+        pathNot: ['^src/main\\.jsx$', '^server/index\\.js$', '^scripts/', '^server/tests/', '\\.test\\.(js|jsx)$', 'vite\\.config\\.js$', 'vitest\\.config\\.js$', 'eslint\\.config\\.js$']
       },
       to: {}
     }

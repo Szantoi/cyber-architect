@@ -22,8 +22,10 @@ createRoot(document.getElementById('root')).render(
 );
 
 // Register Progressive Web App Service Worker
-if (typeof window !== 'undefined' && 'serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+      console.warn('[PWA] Service worker registration failed:', error);
+    });
   });
 }

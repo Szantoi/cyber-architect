@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -28,10 +28,12 @@ import {
   Network
 } from 'lucide-react';
 
-import MarkdownRenderer, { extractHeadings } from '../markdown/MarkdownRenderer.jsx';
+import MarkdownRenderer from '../markdown/MarkdownRenderer.jsx';
 import TableOfContents from '../markdown/TableOfContents.jsx';
 import TacticalAudioPlayer from '../multimedia/TacticalAudioPlayer.jsx';
 import VideoPlayer from '../multimedia/VideoPlayer.jsx';
+import { extractHeadings } from '../../utils/markdownHeadings.js';
+import { getTreeFolders } from '../../utils/taxonomy.js';
 
 
 // ============================================================================
@@ -143,7 +145,7 @@ export const InArticleSearchConsole = ({
       });
 
     return () => { isMounted = false; };
-  }, [docSlug, searchQuery]);
+  }, [docSlug, searchQuery, onRagDataLoaded]);
 
   // Fallback kliens oldali szétbontás, ha még tölt a szerver
   const clientMatches = useMemo(() => {
@@ -224,7 +226,7 @@ export const InArticleSearchConsole = ({
     if (matches.length > 0 && onNavigateToMatch) {
       onNavigateToMatch(matches[0], 0);
     }
-  }, [filterLevel, matches.length]);
+  }, [matches, onNavigateToMatch]);
 
   const jumpToMatch = (idx) => {
     if (!matches.length) return;
@@ -531,94 +533,31 @@ export const RelatedArticles = ({ slug, fetchRelatedUrl, onSelectDoc }) => {
   );
 };
 
-// Helper: Szemantikus többes kategóriák kinyerése egy cikkhez (Többes Módhoz)
-export const getMultiCategoriesForDoc = (item) => {
-  if (!item) return ['Általános'];
-  const categories = new Set();
-
-  // 1. Explicit vesszővel tagolt kategóriák az adatbázisból ha vannak
-  if (item.category) {
-    item.category.split(',').forEach((c) => {
-      const trimmed = c.trim();
-      if (trimmed && !trimmed.startsWith('0')) categories.add(trimmed);
-    });
-  }
-
-  // 2. Szemantikus témák kinyerése cím, összefoglaló és technológiák alapján
-  const corpus = `${item.title || ''} ${item.slug || ''} ${item.summary || ''} ${item.category || ''} ${JSON.stringify(item.dimensions || {})}`.toLowerCase();
-
-  if (/rag|ai|llm|vektor|embedding|hibrid|tudast/i.test(corpus)) {
-    categories.add('AI & RAG RENDSZEREK');
-  }
-  if (/adatbiztonsag|biztonsag|titok|gdpr|air-gap|zart/i.test(corpus)) {
-    categories.add('ADATBIZTONSÁG & GDPR');
-  }
-  if (/cad|autocad|dxf|dwg|mernok|cnc/i.test(corpus)) {
-    categories.add('MÉRNÖKI & CAD/CAM');
-  }
-  if (/automatiz|excel|python|integracio|folyamat|\.net|csharp|c#/i.test(corpus)) {
-    categories.add('KÓD-ALAPÚ AUTOMATIZÁLÁS');
-  }
-  if (/esettanulmany|bevezetes|eset|tapasztalat|0%|megvalositas/i.test(corpus)) {
-    categories.add('ESETTANULMÁNYOK');
-  }
-  if (/specifikacio|architektura|rendszerterv|fts5|api/i.test(corpus)) {
-    categories.add('ARCHITEKTÚRA & SPECIFIKÁCIÓ');
-  }
-
-  if (categories.size === 0) {
-    categories.add(item.category || 'Általános');
-  }
-
-  return Array.from(categories);
-};
-
-// Helper: Többdimenziós mappa lekérdező a kiválasztott Pivot Dimenzió alapján
-export const getTreeFolders = (item, pivotMode = 'drive') => {
-  if (!item) return ['Általános'];
-
-  if (pivotMode === 'drive') {
-    return [(item.drive_folder || item.category || 'Általános').split(',')[0].trim()];
-  }
-  if (pivotMode === 'topic') {
-    return getMultiCategoriesForDoc(item);
-  }
-  if (pivotMode === 'industry') {
-    if (Array.isArray(item.dimensions?.iparag) && item.dimensions.iparag.length > 0) {
-      return item.dimensions.iparag;
-    }
-    return ['Általános Iparág'];
-  }
-  if (pivotMode === 'tech') {
-    if (Array.isArray(item.dimensions?.technologia) && item.dimensions.technologia.length > 0) {
-      return item.dimensions.technologia;
-    }
-    return ['Kód & Algoritmusok'];
-  }
-  return ['Általános'];
-};
-
 // ============================================================================
 // 4. MAIN TACTICAL VAULT EXPLORER ENGINE (Unified Core)
 // ============================================================================
+const DEFAULT_API_ENDPOINTS = {
+  list: '/api/docs',
+  search: '/api/docs/search',
+  doc: (slug) => `/api/docs/${slug}`,
+  related: (slug) => `/api/docs/related/${slug}`
+};
+
+const DEFAULT_HEADER_CONFIG = {
+  badge: 'CYBER-ARCHITECT // KNOWLEDGE VAULT',
+  title: 'Iparági AI Automatizálás & Műszaki Tudástár.',
+  description: 'Valós esettanulmányok, kódminták és zárt vállalati RAG AI rendszerek.',
+  version: 'v2.0',
+  statusBadge: '// RAG_ACTIVE',
+  hubButtonLabel: 'TUDÁSTÁR_BEMUTATÓ_HUB',
+  headerTitle: 'KNOWLEDGE_VAULT'
+};
+
 const TacticalVaultExplorer = ({
   vaultType = 'knowledge', // 'knowledge' | 'blog'
   baseRoute = '/knowledge',
-  apiEndpoints = {
-    list: '/api/docs',
-    search: '/api/docs/search',
-    doc: (slug) => `/api/docs/${slug}`,
-    related: (slug) => `/api/docs/related/${slug}`
-  },
-  headerConfig = {
-    badge: 'CYBER-ARCHITECT // KNOWLEDGE VAULT',
-    title: 'Iparági AI Automatizálás & Műszaki Tudástár.',
-    description: 'Valós esettanulmányok, kódminták és zárt vállalati RAG AI rendszerek.',
-    version: 'v2.0',
-    statusBadge: '// RAG_ACTIVE',
-    hubButtonLabel: 'TUDÁSTÁR_BEMUTATÓ_HUB',
-    headerTitle: 'KNOWLEDGE_VAULT'
-  }
+  apiEndpoints = DEFAULT_API_ENDPOINTS,
+  headerConfig = DEFAULT_HEADER_CONFIG
 }) => {
   const { '*': docSlugParam } = useParams();
   const location = useLocation();
@@ -638,6 +577,7 @@ const TacticalVaultExplorer = ({
   // Filter States (React State based, clean URL)
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [inArticleQuery, setInArticleQuery] = useState(initialQuery);
+  const searchQueryRef = useRef(searchQuery);
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedIparag, setSelectedIparag] = useState('ALL');
   const [selectedTech, setSelectedTech] = useState('ALL');
@@ -653,6 +593,10 @@ const TacticalVaultExplorer = ({
       setInArticleQuery(q);
     }
   }, [location.search, location.state]);
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
   
   // Faceted Pivot Matrix Mode: 'drive' | 'topic' | 'industry' | 'tech'
   const [treePivotMode, setTreePivotMode] = useState(() => {
@@ -686,7 +630,9 @@ const TacticalVaultExplorer = ({
   useEffect(() => {
     try {
       localStorage.setItem('vault_tree_pivot_mode', treePivotMode);
-    } catch {}
+    } catch {
+      // Storage can be unavailable in privacy-restricted browser contexts.
+    }
   }, [treePivotMode]);
 
   // Deep-Link Share URL Handler
@@ -734,6 +680,33 @@ const TacticalVaultExplorer = ({
     }));
   };
 
+  const getDocumentUrl = apiEndpoints.doc;
+
+  // Load a single Document into the Tactical Reader. The latest search query is
+  // held in a ref so changing filters does not retrigger the initial document fetch.
+  const loadDoc = useCallback(async (docItem, updateUrl = true) => {
+    const currentSearchQuery = searchQueryRef.current;
+    setIsLoading(true);
+    setActiveDoc(docItem);
+    setInArticleQuery(currentSearchQuery || '');
+    if (updateUrl) {
+      navigate(`${baseRoute}/${docItem.slug}`, { state: { searchQuery: currentSearchQuery } });
+    }
+    try {
+      const res = await fetch(getDocumentUrl(docItem.slug));
+      if (res.ok) {
+        const data = await res.json();
+        setContent(data.content || '');
+      } else {
+        setContent(docItem.content || '# HIBA\n\nA dokumentum tartalma nem érhető el.');
+      }
+    } catch {
+      setContent(docItem.content || '# HIBA\n\nA dokumentum tartalma nem tölthető be.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [baseRoute, getDocumentUrl, navigate]);
+
   // 1. Initial Load of Docs & URL synchronization
   useEffect(() => {
     const fetchDocs = async () => {
@@ -760,7 +733,7 @@ const TacticalVaultExplorer = ({
       }
     };
     fetchDocs();
-  }, [docSlugParam, apiEndpoints.list]);
+  }, [docSlugParam, apiEndpoints.list, loadDoc]);
 
   // 2. RAG Search & Query
   const [searchResults, setSearchResults] = useState(null);
@@ -802,29 +775,6 @@ const TacticalVaultExplorer = ({
 
     return () => clearTimeout(timer);
   }, [searchQuery, selectedCategory, selectedIparag, selectedTech, selectedCelcsoport, sortBy, apiEndpoints]);
-
-  // Load a single Document into the Tactical Reader
-  const loadDoc = async (docItem, updateUrl = true) => {
-    setIsLoading(true);
-    setActiveDoc(docItem);
-    setInArticleQuery(searchQuery || '');
-    if (updateUrl) {
-      navigate(`${baseRoute}/${docItem.slug}`, { state: { searchQuery } });
-    }
-    try {
-      const res = await fetch(apiEndpoints.doc(docItem.slug));
-      if (res.ok) {
-        const data = await res.json();
-        setContent(data.content || '');
-      } else {
-        setContent(docItem.content || '# HIBA\n\nA dokumentum tartalma nem érhető el.');
-      }
-    } catch {
-      setContent(docItem.content || '# HIBA\n\nA dokumentum tartalma nem tölthető be.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const closeDocToHub = () => {
     setActiveDoc(null);
@@ -1072,7 +1022,7 @@ const TacticalVaultExplorer = ({
   const headings = useMemo(() => extractHeadings(content), [content]);
 
   // In-article match navigation with direct scroll-into-view & persistent focus
-  const handleNavigateToMatch = (match) => {
+  const handleNavigateToMatch = useCallback((match) => {
     if (!match) return;
 
     // Korábbi fókuszkeretek eltávolítása
@@ -1148,7 +1098,7 @@ const TacticalVaultExplorer = ({
         'p-2'
       );
     }
-  };
+  }, []);
 
 
 
@@ -1170,15 +1120,15 @@ const TacticalVaultExplorer = ({
     <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] pt-20 transition-colors duration-200">
       
       {/* ── Tactical Header Bar ── */}
-      <div className="border-b-2 dark:border-white/10 border-slate-900 dark:bg-slate-900/90 bg-white/95 backdrop-blur-md px-6 py-3.5 flex items-center justify-between sticky top-16 z-30 transition-colors shadow-sm font-mono">
-        <div className="flex items-center gap-3">
-          <div className="w-1.5 h-6 dark:bg-neonCyan bg-cyan-700 shadow-[0_0_10px_#00FFFF]" />
+      <div className="border-b-2 dark:border-white/10 border-slate-900 dark:bg-slate-900/90 bg-white/95 backdrop-blur-md px-3 sm:px-6 py-3.5 flex items-center justify-between gap-2 sticky top-16 z-30 transition-colors shadow-sm font-mono">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <div className="w-1.5 h-6 shrink-0 dark:bg-neonCyan bg-cyan-700 shadow-[0_0_10px_#00FFFF]" />
           <button
             onClick={closeDocToHub}
-            className="font-headline font-black uppercase text-sm tracking-widest dark:text-neonCyan text-cyan-800 hover:opacity-80 transition-opacity flex items-center gap-2 cursor-pointer"
+            className="min-w-0 font-headline font-black uppercase text-xs sm:text-sm tracking-[0.12em] sm:tracking-widest dark:text-neonCyan text-cyan-800 hover:opacity-80 transition-opacity flex items-center gap-2 cursor-pointer"
           >
-            <span>{headerConfig.headerTitle || (vaultType === 'blog' ? 'BLOG_ARCHÍVUM' : 'KNOWLEDGE_VAULT')}</span>
-            <span className="text-[10px] px-1.5 py-0.5 bg-neonCyan/10 border border-neonCyan/40 text-neonCyan font-bold">
+            <span className="truncate">{headerConfig.headerTitle || (vaultType === 'blog' ? 'BLOG_ARCHÍVUM' : 'KNOWLEDGE_VAULT')}</span>
+            <span className="shrink-0 text-[10px] px-1.5 py-0.5 bg-neonCyan/10 border border-neonCyan/40 text-neonCyan font-bold">
               {headerConfig.version || 'v2.0'}
             </span>
           </button>
@@ -1189,15 +1139,15 @@ const TacticalVaultExplorer = ({
         </div>
 
         {/* Right Header Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           {/* Deep-Link Share Button */}
           <button
             onClick={handleShareView}
-            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 dark:bg-neonMagenta/10 bg-fuchsia-100 border-2 dark:border-neonMagenta border-fuchsia-800 dark:text-neonMagenta text-fuchsia-950 hover:bg-neonMagenta hover:text-white transition-all shadow-[2px_2px_0_#0f172a] dark:shadow-none cursor-pointer"
+            className="flex items-center gap-1.5 text-xs font-bold px-2.5 sm:px-3 py-1.5 dark:bg-neonMagenta/10 bg-fuchsia-100 border-2 dark:border-neonMagenta border-fuchsia-800 dark:text-neonMagenta text-fuchsia-950 hover:bg-neonMagenta hover:text-white transition-all shadow-[2px_2px_0_#0f172a] dark:shadow-none cursor-pointer"
             title="Aktuális szűrt nézet megosztható linkjének másolása"
           >
             {copyToast ? <Check size={13} className="text-plasmaGreen" /> : <Share2 size={13} />}
-            <span>{copyToast ? 'LINK MÁSOLVA! ✓' : 'MEGOSZTÁS 🔗'}</span>
+            <span className="hidden sm:inline">{copyToast ? 'LINK MÁSOLVA! ✓' : 'MEGOSZTÁS 🔗'}</span>
           </button>
 
           {activeDoc ? (
@@ -1206,7 +1156,7 @@ const TacticalVaultExplorer = ({
               className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 dark:bg-neonCyan/10 bg-cyan-100 border-2 dark:border-neonCyan border-cyan-800 dark:text-neonCyan text-cyan-900 hover:bg-neonCyan hover:text-black transition-all shadow-[2px_2px_0_#0f172a] dark:shadow-none cursor-pointer"
             >
               <LayoutGrid size={13} />
-              <span>ÁTTEKINTÉS_HUB ◀</span>
+              <span className="hidden sm:inline">ÁTTEKINTÉS_HUB ◀</span>
             </button>
           ) : (
             <div className="text-[11px] font-bold dark:text-slate-400 text-slate-700 hidden sm:block">
@@ -1217,8 +1167,9 @@ const TacticalVaultExplorer = ({
           {/* Mobile Sidebar Button */}
           <button
             onClick={() => setSidebarOpen((v) => !v)}
-            className="xl:hidden dark:text-neonCyan text-cyan-700 p-1.5 border-2 border-slate-900 dark:border-neonCyan hover:bg-neonCyan/10 transition-colors cursor-pointer"
+            className="xl:hidden shrink-0 dark:text-neonCyan text-cyan-700 p-1.5 border-2 border-slate-900 dark:border-neonCyan hover:bg-neonCyan/10 transition-colors cursor-pointer"
             title="Navigáció megnyitása"
+            aria-label="Navigáció megnyitása"
           >
             {sidebarOpen ? <X size={16} /> : <FolderOpen size={16} />}
           </button>
@@ -1226,7 +1177,7 @@ const TacticalVaultExplorer = ({
       </div>
 
       {/* ── 3-Column Main Layout ── */}
-      <div className="flex h-[calc(100vh-8.5rem)] relative">
+      <div className="flex min-w-0 h-[calc(100vh-8.5rem)] relative">
         
         {/* ── Tactical Ribbed Tab (Bordázott Fül) Sidebar Toggle Handle ── */}
         <button
@@ -1373,7 +1324,7 @@ const TacticalVaultExplorer = ({
                   onClick={() => toggleSmartFilter('featured')}
                   className={`flex items-center justify-between px-2 py-1.5 border transition-all cursor-pointer ${
                     smartFilters.includes('featured')
-                      ? 'bg-neonCyan/25 border-neonCyan text-white shadow-[0_0_10px_rgba(0,255,255,0.4)] font-black'
+                    ? 'dark:bg-neonCyan/25 dark:border-neonCyan dark:text-white bg-cyan-700 border-cyan-800 text-white shadow-[0_0_10px_rgba(0,255,255,0.4)] font-black'
                       : 'dark:bg-slate-900 bg-slate-100 dark:border-white/10 border-slate-300 text-slate-700 dark:text-slate-300 hover:border-neonCyan'
                   }`}
                   title="Kiemelt Esettanulmányok & Projektek (Többszörös kijelölés lehetséges)"
@@ -1392,7 +1343,7 @@ const TacticalVaultExplorer = ({
                   onClick={() => toggleSmartFilter('audio')}
                   className={`flex items-center justify-between px-2 py-1.5 border transition-all cursor-pointer ${
                     smartFilters.includes('audio')
-                      ? 'bg-neonMagenta/25 border-neonMagenta text-white shadow-[0_0_10px_rgba(255,0,255,0.4)] font-black'
+                    ? 'dark:bg-neonMagenta/25 dark:border-neonMagenta dark:text-white bg-fuchsia-800 border-fuchsia-900 text-white shadow-[0_0_10px_rgba(255,0,255,0.4)] font-black'
                       : 'dark:bg-slate-900 bg-slate-100 dark:border-white/10 border-slate-300 text-slate-700 dark:text-slate-300 hover:border-neonMagenta'
                   }`}
                   title="Hanganyaggal ellátott dokumentumok (Többszörös kijelölés lehetséges)"
@@ -1411,16 +1362,16 @@ const TacticalVaultExplorer = ({
                   onClick={() => toggleSmartFilter('video')}
                   className={`flex items-center justify-between px-2 py-1.5 border transition-all cursor-pointer ${
                     smartFilters.includes('video')
-                      ? 'bg-cyan-500/25 border-cyan-400 text-white shadow-[0_0_10px_rgba(0,255,255,0.4)] font-black'
+                    ? 'dark:bg-cyan-500/25 dark:border-cyan-400 dark:text-white bg-cyan-700 border-cyan-800 text-white shadow-[0_0_10px_rgba(0,255,255,0.4)] font-black'
                       : 'dark:bg-slate-900 bg-slate-100 dark:border-white/10 border-slate-300 text-slate-700 dark:text-slate-300 hover:border-cyan-400'
                   }`}
                   title="Videó demóval és bemutatóval ellátott cikkek (Többszörös kijelölés lehetséges)"
                 >
                   <span className="flex items-center gap-1 font-bold">
-                    <Video size={10} className="text-cyan-400" />
+                    <Video size={10} className="dark:text-cyan-400 text-cyan-800" />
                     VIDEÓ
                   </span>
-                  <span className="font-mono text-[8px] font-bold text-cyan-400">
+                  <span className="font-mono text-[8px] font-bold dark:text-cyan-400 text-cyan-800">
                     {smartCounts.video}
                   </span>
                 </button>
@@ -1430,7 +1381,7 @@ const TacticalVaultExplorer = ({
                   onClick={() => toggleSmartFilter('specs')}
                   className={`flex items-center justify-between px-2 py-1.5 border transition-all cursor-pointer ${
                     smartFilters.includes('specs')
-                      ? 'bg-plasmaGreen/25 border-plasmaGreen text-white shadow-[0_0_10px_rgba(128,255,0,0.4)] font-black'
+                    ? 'dark:bg-plasmaGreen/25 dark:border-plasmaGreen dark:text-white bg-emerald-800 border-emerald-900 text-white shadow-[0_0_10px_rgba(128,255,0,0.4)] font-black'
                       : 'dark:bg-slate-900 bg-slate-100 dark:border-white/10 border-slate-300 text-slate-700 dark:text-slate-300 hover:border-plasmaGreen'
                   }`}
                   title="Műszaki rendszertervek és specifikációk (Többszörös kijelölés lehetséges)"
@@ -1775,16 +1726,16 @@ const TacticalVaultExplorer = ({
             /* ══════════════════════════════════════════════════════════ */
             /* NÉZET B: BEMUTATÓ HUB (MATRIX CARDS & FILTERS)             */
             /* ══════════════════════════════════════════════════════════ */
-            <div className="max-w-7xl mx-auto px-6 py-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
               
               {/* Hero Banner */}
-              <div className="border-2 dark:border-white/10 border-slate-900 p-8 mb-8 relative overflow-hidden dark:bg-slate-950/60 bg-white shadow-[4px_4px_0_#0f172a] dark:shadow-none font-mono">
-                <div className="relative z-10">
-                  <div className="flex items-center gap-2 text-[10px] text-neonCyan font-black uppercase tracking-widest mb-2">
+              <div className="border-2 dark:border-white/10 border-slate-900 p-4 sm:p-8 mb-8 relative overflow-hidden dark:bg-slate-950/60 bg-white shadow-[4px_4px_0_#0f172a] dark:shadow-none font-mono">
+                <div className="relative z-10 min-w-0">
+                  <div className="flex max-w-full items-center gap-2 text-[9px] sm:text-[10px] text-neonCyan font-black uppercase tracking-[0.1em] sm:tracking-widest leading-relaxed mb-2">
                     <span className="w-2 h-2 bg-neonCyan inline-block animate-pulse"></span>
-                    <span>{headerConfig.badge}</span>
+                    <span className="min-w-0 break-words">{headerConfig.badge}</span>
                   </div>
-                  <h1 className="text-3xl md:text-5xl font-headline font-black italic uppercase text-slate-900 dark:text-white mb-3 tracking-tight">
+                  <h1 className="break-words text-3xl md:text-5xl font-headline font-black italic uppercase text-slate-900 dark:text-white mb-3 tracking-tight">
                     {headerConfig.title}
                   </h1>
                   <p className="font-body dark:text-slate-300 text-slate-700 text-sm max-w-3xl leading-relaxed">
@@ -2013,11 +1964,11 @@ const TacticalVaultExplorer = ({
                     >
                       <div>
                         {/* Meta Line */}
-                        <div className="flex items-center justify-between gap-2 mb-3 font-mono text-[9px] uppercase">
-                          <span className="px-2 py-0.5 dark:bg-black/60 bg-slate-100 border dark:border-neonCyan/40 border-slate-400 text-neonCyan font-bold">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3 font-mono text-[9px] uppercase">
+                          <span className="max-w-full break-words px-2 py-0.5 dark:bg-black/60 bg-slate-100 border dark:border-neonCyan/40 border-slate-400 text-neonCyan font-bold">
                             {item.category || (vaultType === 'blog' ? 'BLOG' : 'DOKUMENTUM')}
                           </span>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
                             <span className="text-plasmaGreen font-bold flex items-center gap-1">
                               <Zap size={11} />
                               <span>{item.scorePercentage || 90}% {item.scoreLabel || 'MATCH'}</span>
@@ -2109,7 +2060,7 @@ const TacticalVaultExplorer = ({
                       </div>
 
                       {/* Card Footer */}
-                      <div className="pt-3 border-t dark:border-white/5 border-slate-200 flex items-center justify-between font-mono text-[10px]">
+                      <div className="pt-3 border-t dark:border-white/5 border-slate-200 flex flex-wrap items-center justify-between gap-2 font-mono text-[10px]">
                         <span className="text-slate-500">
                           {item.created_at ? `${item.created_at} • ` : ''}{item.read_time || '4 PERC'}
                         </span>

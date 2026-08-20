@@ -4,6 +4,7 @@
 :root, .dark {
   --bg-main: #090d1d;
   --surface-main: #0d1226;
+  --surface-panel: #0d1226;
   --surface-subtle: #121832;
   --surface-container: #151b38;
   --surface-container-high: #1c2348;
@@ -25,6 +26,7 @@
   /* Tactical Blueprint Slate - szemkímélő ipari mérnöki pala, nincs vakító fehér! */
   --bg-main: #d4dce8;
   --surface-main: #e2e9f3;
+  --surface-panel: #f8fafc;
   --surface-subtle: #cad4e2;
   --surface-container: #bcc8d8;
   --surface-container-high: #abb9cc;
@@ -35,9 +37,10 @@
   /* Határozott, kontrasztos fekete/sötétkék ipari kontúrok */
   --border-main: #0f172a;
   --border-subtle: rgba(15, 23, 42, 0.35);
-  --neon-cyan: #0369a1;
-  --neon-magenta: #9333ea;
-  --plasma-green: #15803d;
+  /* Small labels need AA contrast against the blueprint background. */
+  --neon-cyan: #075985;
+  --neon-magenta: #7e22ce;
+  --plasma-green: #166534;
   --card-shadow: 3px 3px 0 #0f172a;
   background-color: var(--bg-main);
   color: var(--text-main);
@@ -94,11 +97,175 @@ body {
 
 .light .text-slate-400,
 .light .text-slate-500 {
-  color: #1e293b;
+  color: #334155;
 }
 
 .light .text-slate-300 {
-  color: #0f172a;
+  color: #1e293b;
+}
+
+/* Keep black copy readable whenever a light-theme control uses an accent fill. */
+.light .bg-neonCyan.text-black,
+.light .bg-neonCyan.text-slate-950 {
+  background-color: #22d3ee;
+}
+
+.light .bg-neonMagenta.text-black,
+.light .bg-neonMagenta.text-slate-950 {
+  background-color: #f0abfc;
+}
+
+.light .bg-plasmaGreen.text-black,
+.light .bg-plasmaGreen.text-slate-950 {
+  background-color: #bef264;
+}
+
+.light :is(.bg-cyan-700, .bg-fuchsia-800, .bg-emerald-800) :is(.text-neonCyan, .text-neonMagenta, .text-plasmaGreen) {
+  color: #f8fafc;
+}
+
+/* Search-result badges use translucent accent fills in light mode. */
+.light [class~="bg-cyan-500/20"].text-cyan-300 {
+  color: #155e75;
+}
+
+.light [class~="bg-fuchsia-500/20"].text-fuchsia-300 {
+  color: #86198f;
+}
+
+.light [class~="bg-emerald-500/20"].text-emerald-300 {
+  color: #14532d;
+}
+
+/*
+ * A few terminal/code surfaces intentionally stay dark in light theme.  The
+ * general light-theme text overrides above would otherwise turn their copy
+ * nearly black.  Restore a high-contrast terminal palette only inside those
+ * explicit dark surfaces.
+ */
+.light :is(
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-black,
+  [class~="bg-black/30"],
+  [class~="bg-black/50"],
+  [class~="bg-black/60"],
+  [class~="bg-black/70"],
+  [class~="bg-black/80"],
+  [class~="bg-[#050814]"],
+  [class~="bg-[#090e1c]"],
+  [class~="bg-[#12192e]"]
+) {
+  color: #e2e8f0;
+}
+
+.light :is(
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-black,
+  [class~="bg-black/30"],
+  [class~="bg-black/50"],
+  [class~="bg-black/60"],
+  [class~="bg-black/70"],
+  [class~="bg-black/80"],
+  [class~="bg-[#050814]"],
+  [class~="bg-[#090e1c]"],
+  [class~="bg-[#12192e]"]
+) :is(h1, h2, h3, h4, h5, h6, .text-on-surface, .text-slate-300) {
+  color: #e2e8f0;
+}
+
+.light :is(
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-black,
+  [class~="bg-black/30"],
+  [class~="bg-black/50"],
+  [class~="bg-black/60"],
+  [class~="bg-black/70"],
+  [class~="bg-black/80"],
+  [class~="bg-[#050814]"],
+  [class~="bg-[#090e1c]"],
+  [class~="bg-[#12192e]"]
+) .text-slate-400 {
+  color: #cbd5e1;
+}
+
+.light :is(
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-black,
+  [class~="bg-black/30"],
+  [class~="bg-black/50"],
+  [class~="bg-black/60"],
+  [class~="bg-black/70"],
+  [class~="bg-black/80"],
+  [class~="bg-[#050814]"],
+  [class~="bg-[#090e1c]"],
+  [class~="bg-[#12192e]"]
+) .text-slate-500 {
+  color: #94a3b8;
+}
+
+.light :is(
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-black,
+  [class~="bg-black/30"],
+  [class~="bg-black/50"],
+  [class~="bg-black/60"],
+  [class~="bg-black/70"],
+  [class~="bg-black/80"],
+  [class~="bg-[#050814]"],
+  [class~="bg-[#090e1c]"],
+  [class~="bg-[#12192e]"]
+) .text-neonCyan {
+  color: #67e8f9;
+}
+
+.light :is(
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-black,
+  [class~="bg-black/30"],
+  [class~="bg-black/50"],
+  [class~="bg-black/60"],
+  [class~="bg-black/70"],
+  [class~="bg-black/80"],
+  [class~="bg-[#050814]"],
+  [class~="bg-[#090e1c]"],
+  [class~="bg-[#12192e]"]
+) .text-neonMagenta {
+  color: #f0abfc;
+}
+
+.light :is(
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-black,
+  [class~="bg-black/30"],
+  [class~="bg-black/50"],
+  [class~="bg-black/60"],
+  [class~="bg-black/70"],
+  [class~="bg-black/80"],
+  [class~="bg-[#050814]"],
+  [class~="bg-[#090e1c]"],
+  [class~="bg-[#12192e]"]
+) .text-plasmaGreen,
+.light :is(
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-black,
+  [class~="bg-black/30"],
+  [class~="bg-black/50"],
+  [class~="bg-black/60"],
+  [class~="bg-black/70"],
+  [class~="bg-black/80"],
+  [class~="bg-[#050814]"],
+  [class~="bg-[#090e1c]"],
+  [class~="bg-[#12192e]"]
+) .text-tertiary {
+  color: #bef264;
 }
 
 .light .bg-surface-container-lowest {

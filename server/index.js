@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { dbService } from './services/dbService.js';
@@ -22,6 +25,10 @@ import { healthRouter } from './routes/health.routes.js';
 import { sseRouter } from './routes/sse.routes.js';
 import { mcpRouter } from './routes/mcp.routes.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.resolve(__dirname, '../dist');
+
 // Validate environment variables on boot
 validateEnv();
 
@@ -35,7 +42,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // For React Vite builds and diagrams
+      scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
@@ -99,6 +106,30 @@ app.use('/api/mcp', mcpRouter);
 // Catch Unhandled API Routes (404)
 app.use('/api', notFoundHandler);
 
+// Serve the compiled frontend from the production container.
+if (config.isProduction) {
+  if (!fs.existsSync(path.join(distPath, 'index.html'))) {
+    logger.warn(`[STATIC_ASSETS] Production bundle not found at ${distPath}`);
+  } else {
+    app.use(express.static(distPath, {
+      index: false,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+          res.setHeader('Cache-Control', 'no-cache');
+        } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      }
+    }));
+
+    // Client-side routes fall back to the SPA entry point after API handling.
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || !req.accepts('html')) return next();
+      return res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+}
+
 // Global Error Handler Middleware (500)
 app.use(globalErrorHandler);
 
@@ -109,8 +140,12 @@ try {
   logger.warn('Initial terminal sync warning:', syncErr);
 }
 
-// Start listening if executed directly
-if (process.env.NODE_ENV !== 'test') {
+// Importing the Express app must not open a port as a side effect. This keeps
+// integration tests and operational tooling in control of the server lifecycle.
+const isDirectExecution = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === __filename;
+
+if (process.env.NODE_ENV !== 'test' && isDirectExecution) {
   dbMaintenance.startPeriodicMaintenance();
   app.listen(PORT, () => {
     logger.success(`[CYBER_CORE_SERVER] Backend API running on port ${PORT} [${config.nodeEnv.toUpperCase()}]`);

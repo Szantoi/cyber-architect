@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, HelpCircle, BookOpen, ExternalLink, RefreshCw } from 'lucide-react';
 import MarkdownRenderer from '../markdown/MarkdownRenderer.jsx';
 
@@ -16,7 +16,7 @@ const HelpPanel = ({ isOpen, onClose }) => {
   const [error, setError] = useState(null);
   const [lastLoaded, setLastLoaded] = useState(null);
 
-  const loadHelp = async () => {
+  const loadHelp = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -30,12 +30,12 @@ const HelpPanel = ({ isOpen, onClose }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   // Betöltés panel nyitásakor
   useEffect(() => {
     if (isOpen && !content) loadHelp();
-  }, [isOpen]);
+  }, [isOpen, content, loadHelp]);
 
   // ESC billentyű → bezárás
   useEffect(() => {

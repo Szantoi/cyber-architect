@@ -42,5 +42,3 @@ export function validate(schema, source = 'body') {
 }
 
 export const validateBody = (schema) => validate(schema, 'body');
-export const validateQuery = (schema) => validate(schema, 'query');
-export const validateParams = (schema) => validate(schema, 'params');

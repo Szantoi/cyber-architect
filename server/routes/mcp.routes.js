@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { dbService } from '../services/dbService.js';
 import { logger } from '../logger.js';
 import { config } from '../config.js';
 

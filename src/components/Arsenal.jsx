@@ -79,8 +79,8 @@ const Arsenal = () => {
     <section className="py-24 relative overflow-hidden bg-background scroll-mt-28" id="arsenal">
       <div className="container mx-auto px-6">
         <div className="mb-20 flex flex-col md:flex-row justify-between items-end gap-6">
-          <div className="border-l-4 border-neonCyan pl-8">
-            <span className="font-mono text-neonCyan text-xs font-black uppercase tracking-[0.5em]">// TECHNOLÓGIAI_ESZKÖZTÁR</span>
+          <div className="min-w-0 border-l-4 border-neonCyan pl-5 sm:pl-8">
+            <span className="block max-w-full break-words font-mono text-[10px] sm:text-xs text-neonCyan font-black uppercase tracking-[0.18em] sm:tracking-[0.5em] leading-relaxed">// TECHNOLÓGIAI_ESZKÖZTÁR</span>
             <h2 className="text-5xl md:text-7xl font-headline font-black italic uppercase text-on-surface mt-2">Eszköztár.</h2>
           </div>
           <div className="font-mono text-[10px] text-slate-500 uppercase text-right">

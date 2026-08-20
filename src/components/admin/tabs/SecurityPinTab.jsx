@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Shield, Key, Plus, Trash2, Copy, Check, Terminal, Bot, RefreshCw } from 'lucide-react';
 
 const SecurityPinTab = ({ onUpdatePin, adminFetch, showNotify }) => {
@@ -16,7 +16,7 @@ const SecurityPinTab = ({ onUpdatePin, adminFetch, showNotify }) => {
   const [newlyIssuedKey, setNewlyIssuedKey] = useState(null);
   const [copiedKey, setCopiedKey] = useState(false);
 
-  const loadAgentKeys = async () => {
+  const loadAgentKeys = useCallback(async () => {
     if (!adminFetch) return;
     setLoadingKeys(true);
     try {
@@ -30,20 +30,20 @@ const SecurityPinTab = ({ onUpdatePin, adminFetch, showNotify }) => {
     } finally {
       setLoadingKeys(false);
     }
-  };
+  }, [adminFetch]);
 
   useEffect(() => {
     loadAgentKeys();
-  }, []);
+  }, [loadAgentKeys]);
 
   const handlePinSubmit = async (e) => {
     e.preventDefault();
     setPinMessage('');
     setIsError(false);
 
-    if (newPin.length < 4) {
+    if (newPin.length < 12 || newPin.length > 64) {
       setIsError(true);
-      setPinMessage('HIBA: A PIN kódnak legalább 4 karakter hosszúnak kell lennie!');
+      setPinMessage('HIBA: A PIN kódnak 12 és 64 karakter között kell lennie!');
       return;
     }
 
@@ -58,9 +58,9 @@ const SecurityPinTab = ({ onUpdatePin, adminFetch, showNotify }) => {
       setNewPin('');
       setConfirmPin('');
       setPinMessage('SIKER: A biztonsági PIN kód sikeresen frissítve!');
-    } catch {
+    } catch (error) {
       setIsError(true);
-      setPinMessage('HIBA: A PIN kód frissítése sikertelen volt.');
+      setPinMessage(`HIBA: ${error?.message || 'A PIN kód frissítése sikertelen volt.'}`);
     }
   };
 
@@ -311,11 +311,14 @@ const SecurityPinTab = ({ onUpdatePin, adminFetch, showNotify }) => {
           <form onSubmit={handlePinSubmit} className="space-y-6 text-xs">
             <div>
               <label className="block dark:text-slate-400 text-slate-900 uppercase tracking-wider mb-2 font-bold">
-                ÚJ_BIZTONSÁGI_PIN (MIN. 4 KARAKTER):
+                ÚJ_BIZTONSÁGI_PIN (12–64 KARAKTER):
               </label>
               <input
                 type="password"
                 required
+                minLength={12}
+                maxLength={64}
+                autoComplete="new-password"
                 value={newPin}
                 onChange={(e) => setNewPin(e.target.value)}
                 placeholder="••••"
@@ -330,6 +333,9 @@ const SecurityPinTab = ({ onUpdatePin, adminFetch, showNotify }) => {
               <input
                 type="password"
                 required
+                minLength={12}
+                maxLength={64}
+                autoComplete="new-password"
                 value={confirmPin}
                 onChange={(e) => setConfirmPin(e.target.value)}
                 placeholder="••••"
@@ -352,4 +358,3 @@ const SecurityPinTab = ({ onUpdatePin, adminFetch, showNotify }) => {
 };
 
 export default SecurityPinTab;
-

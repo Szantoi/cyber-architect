@@ -3,7 +3,7 @@ import { dbService } from '../services/dbService.js';
 import { logger } from '../logger.js';
 import { authMiddleware, generateAdminToken } from '../security/auth.js';
 import { authLimiter } from '../security/rateLimiter.js';
-import driveSyncService from '../services/driveSyncService.js';
+import { driveSyncService } from '../services/driveSyncService.js';
 import { validateBody } from '../middleware/validate.js';
 import { loginSchema, updatePinSchema } from '../schemas/auth.schema.js';
 import { settingsSchema } from '../schemas/settings.schema.js';
@@ -388,4 +388,3 @@ adminRouter.post('/admin/agent-keys/:id/revoke', authMiddleware, (req, res) => {
     res.status(500).json({ error: err.message || 'KEY_REVOCATION_FAILED' });
   }
 });
-

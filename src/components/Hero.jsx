@@ -46,16 +46,16 @@ const Hero = () => {
         animate="visible"
       >
         <div className="max-w-5xl mx-auto">
-          <motion.div variants={itemVars} className="mb-6 inline-flex items-center gap-3">
+          <motion.div variants={itemVars} className="mb-6 flex max-w-full items-center gap-3">
             <span className="w-12 h-[1px] bg-neonCyan"></span>
-            <span className="font-mono text-neonCyan text-xs font-black uppercase tracking-[0.4em] animate-flicker">
+            <span className="max-w-full break-words font-mono text-[10px] sm:text-xs text-neonCyan font-black uppercase tracking-[0.16em] sm:tracking-[0.4em] leading-relaxed animate-flicker">
               {statusText}
             </span>
           </motion.div>
           
           <motion.h1 
             variants={itemVars}
-            className="text-7xl md:text-9xl font-headline font-black italic uppercase leading-[0.85] text-on-surface glitch-text mb-8 tracking-tighter"
+            className="text-6xl sm:text-7xl md:text-9xl font-headline font-black italic uppercase leading-[0.85] text-on-surface glitch-text mb-8 tracking-tighter"
           >
             {titleLines.map((line, idx) => (
               <span key={idx}>
@@ -77,7 +77,7 @@ const Hero = () => {
             {subtitleText}
           </motion.p>
 
-          <motion.div variants={itemVars} className="flex flex-wrap gap-6">
+          <motion.div variants={itemVars} className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
             <a 
               href="#uplink"
               onClick={(e) => {
@@ -89,7 +89,7 @@ const Hero = () => {
                   window.history.pushState(null, '', '#uplink');
                 }
               }}
-              className="group relative dark:bg-neonCyan bg-cyan-700 dark:text-black text-white font-headline font-black italic uppercase px-10 py-5 transition-all duration-200 border-2 border-slate-950 shadow-[4px_4px_0_#0f172a] dark:shadow-none dark:hover:shadow-[0_0_25px_rgba(0,251,251,0.5)] hover:bg-slate-950 hover:text-cyan-300 active:scale-95 overflow-hidden inline-flex items-center gap-3"
+              className="group relative w-full justify-center dark:bg-neonCyan bg-cyan-700 dark:text-black text-white font-headline font-black italic uppercase px-6 sm:w-auto sm:px-10 py-5 transition-all duration-200 border-2 border-slate-950 shadow-[4px_4px_0_#0f172a] dark:shadow-none dark:hover:shadow-[0_0_25px_rgba(0,251,251,0.5)] hover:bg-slate-950 hover:text-cyan-300 active:scale-95 overflow-hidden inline-flex items-center gap-3"
             >
               <span className="relative z-10 flex items-center gap-3">
                 {btnPrimary}
@@ -108,7 +108,7 @@ const Hero = () => {
                   window.history.pushState(null, '', '#grid');
                 }
               }}
-              className="bg-white/40 dark:bg-transparent border-2 dark:border-white/20 border-slate-950 text-on-surface font-headline font-black italic uppercase px-10 py-5 shadow-[4px_4px_0_#0f172a] dark:shadow-none hover:bg-slate-950 hover:text-white dark:hover:border-neonMagenta dark:hover:text-neonMagenta transition-all duration-300 flex items-center gap-3"
+              className="w-full justify-center bg-white/40 dark:bg-transparent border-2 dark:border-white/20 border-slate-950 text-on-surface font-headline font-black italic uppercase px-6 sm:w-auto sm:px-10 py-5 shadow-[4px_4px_0_#0f172a] dark:shadow-none hover:bg-slate-950 hover:text-white dark:hover:border-neonMagenta dark:hover:text-neonMagenta transition-all duration-300 flex items-center gap-3"
             >
               {btnSecondary}
               <span className="material-symbols-outlined">folder_open</span>

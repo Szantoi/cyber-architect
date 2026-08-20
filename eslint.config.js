@@ -32,7 +32,13 @@ export default defineConfig([
           caughtErrors: 'none',
         },
       ],
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      'react-refresh/only-export-components': [
+        'warn',
+        {
+          allowConstantExport: true,
+          allowExportNames: ['useAuth', 'useContent', 'useTheme'],
+        },
+      ],
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/error-boundaries': 'off',
       'react-hooks/exhaustive-deps': 'warn',

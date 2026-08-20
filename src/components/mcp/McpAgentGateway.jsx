@@ -155,8 +155,8 @@ const MCP_TOOLS_CATALOG = [
     name: 'list_knowledge_projects',
     category: 'MUNKATEREK & PROJEKTEK',
     badge: 'READ',
-    color: 'text-cyan-300',
-    borderColor: 'border-cyan-300',
+    color: 'dark:text-cyan-300 text-cyan-800',
+    borderColor: 'dark:border-cyan-300 border-cyan-800',
     description: 'A platformhoz tartozó összes tudás-munkatér és projekt (SpaceOS, DocCapture, JoineryTech, Cyber-Architect) listázása.',
     params: 'nincs paraméter'
   },
@@ -173,8 +173,8 @@ const MCP_TOOLS_CATALOG = [
     name: 'list_blog_posts',
     category: 'BLOG & ESETTANULMÁNY',
     badge: 'READ',
-    color: 'text-purple-400',
-    borderColor: 'border-purple-400',
+    color: 'dark:text-purple-400 text-purple-800',
+    borderColor: 'dark:border-purple-400 border-purple-800',
     description: 'Publikus mérnöki és vezetői esettanulmányok, szakmai cikkek listázása olvasási idővel és összefoglalóval.',
     params: 'published_only (opcionális)'
   },
@@ -182,8 +182,8 @@ const MCP_TOOLS_CATALOG = [
     name: 'get_architecture_blueprint',
     category: 'RENDSZERTERV & SPEC',
     badge: 'READ',
-    color: 'text-cyan-400',
-    borderColor: 'border-cyan-400',
+    color: 'dark:text-cyan-400 text-cyan-800',
+    borderColor: 'dark:border-cyan-400 border-cyan-800',
     description: 'A platform 6-lépéses RAG pipeline leírása, biztonsági garanciái és rendszer-topológiája.',
     params: 'nincs paraméter'
   },
@@ -191,8 +191,8 @@ const MCP_TOOLS_CATALOG = [
     name: 'get_system_health',
     category: 'DIAGNOSZTIKA',
     badge: 'READ',
-    color: 'text-rose-400',
-    borderColor: 'border-rose-400',
+    color: 'dark:text-rose-400 text-rose-800',
+    borderColor: 'dark:border-rose-400 border-rose-800',
     description: 'Valós idejű rendszer-diagnosztika: SQLite WAL állapot, adatbázis integritás és futásidő.',
     params: 'nincs paraméter'
   },
@@ -200,8 +200,8 @@ const MCP_TOOLS_CATALOG = [
     name: 'create_message_uplink',
     category: 'KÖZVETLEN MEGKERESÉS',
     badge: 'INQUIRY',
-    color: 'text-yellow-400',
-    borderColor: 'border-yellow-400',
+    color: 'dark:text-yellow-400 text-amber-800',
+    borderColor: 'dark:border-yellow-400 border-amber-800',
     description: 'Közvetlen üzenet vagy megkeresés küldése Szántói Gábornak az AI ágens vagy megbízója nevében.',
     params: 'identity, subject, message (kötelező)'
   }
@@ -229,13 +229,13 @@ const McpAgentGateway = () => {
         description="Model Context Protocol (MCP) csatlakozási felület autonóm AI ágenseknek. Automatikus felderítés, 1-kattintásos kliens konfigurációk és éles eszköztár."
       />
 
-      <div className="max-w-7xl mx-auto px-6 font-mono">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 font-mono">
         
         {/* ── Top Tactical Header ── */}
-        <div className="border-2 dark:border-white/10 border-slate-900 p-6 md:p-8 mb-12 dark:bg-slate-950/60 bg-white shadow-[6px_6px_0_#0f172a] dark:shadow-[0_0_25px_rgba(0,255,255,0.08)] relative overflow-hidden">
-          <div className="flex items-center gap-2 text-[10px] text-neonCyan font-black uppercase tracking-widest mb-3">
+        <div className="border-2 dark:border-white/10 border-slate-900 p-4 sm:p-6 md:p-8 mb-12 dark:bg-slate-950/60 bg-white shadow-[6px_6px_0_#0f172a] dark:shadow-[0_0_25px_rgba(0,255,255,0.08)] relative overflow-hidden">
+          <div className="flex max-w-full items-center gap-2 text-[9px] sm:text-[10px] text-neonCyan font-black uppercase tracking-[0.1em] sm:tracking-widest leading-relaxed mb-3">
             <span className="w-2.5 h-2.5 bg-neonCyan inline-block animate-pulse" />
-            <span>MODEL CONTEXT PROTOCOL (MCP) // AGENT CONNECTION GATEWAY</span>
+            <span className="min-w-0 break-words">MODEL CONTEXT PROTOCOL (MCP) // AGENT CONNECTION GATEWAY</span>
           </div>
 
           <h1 className="text-3xl md:text-5xl font-headline font-black italic uppercase text-slate-900 dark:text-white mb-4 tracking-tight leading-tight">
@@ -276,14 +276,14 @@ const McpAgentGateway = () => {
                 <button
                   key={key}
                   onClick={() => setActiveTab(key)}
-                  className={`w-full p-4 border-2 text-left transition-all cursor-pointer flex items-center justify-between ${
+                  className={`w-full min-w-0 p-4 border-2 text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${
                     isSelected
                       ? 'border-neonCyan dark:bg-slate-900 bg-cyan-50 shadow-[4px_4px_0_#0f172a] text-slate-950 dark:text-white'
                       : 'dark:border-white/10 border-slate-300 dark:bg-slate-950/40 bg-white hover:border-slate-400 text-slate-700 dark:text-slate-300'
                   }`}
                 >
-                  <div>
-                    <span className="text-xs font-headline font-black uppercase block">
+                  <div className="min-w-0">
+                    <span className="block break-words text-xs font-headline font-black uppercase">
                       {config.title}
                     </span>
                     <span className="text-[10px] text-slate-500 font-mono">
@@ -298,20 +298,20 @@ const McpAgentGateway = () => {
 
           {/* Right: Code & Instruction Display */}
           <div className="lg:col-span-8">
-            <div className="p-6 md:p-8 border-2 border-neonCyan dark:bg-slate-950/80 bg-white shadow-[6px_6px_0_#0f172a] relative">
-              <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b dark:border-white/10 border-slate-200">
-                <div>
-                  <span className="text-[10px] text-neonCyan font-bold uppercase tracking-widest block">
+            <div className="p-4 sm:p-6 md:p-8 border-2 border-neonCyan dark:bg-slate-950/80 bg-white shadow-[6px_6px_0_#0f172a] relative">
+              <div className="flex flex-col items-stretch sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b dark:border-white/10 border-slate-200">
+                <div className="min-w-0">
+                  <span className="block break-words text-[10px] text-neonCyan font-bold uppercase tracking-[0.1em] sm:tracking-widest">
                     KONFIGURÁCIÓS FÁJL // {currentConfig.title}
                   </span>
-                  <h4 className="text-lg font-headline font-black uppercase dark:text-white text-slate-950">
+                  <h4 className="break-words text-lg font-headline font-black uppercase dark:text-white text-slate-950">
                     {currentConfig.filename}
                   </h4>
                 </div>
 
                 <button
                   onClick={() => handleCopy(currentConfig.code)}
-                  className={`px-4 py-2 text-xs font-headline font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-[2px_2px_0_#0f172a] ${
+                  className={`w-full justify-center sm:w-auto px-4 py-2 text-xs font-headline font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-[2px_2px_0_#0f172a] ${
                     copied 
                       ? 'bg-plasmaGreen text-black' 
                       : 'bg-neonCyan text-black hover:bg-white'
@@ -413,7 +413,7 @@ const McpAgentGateway = () => {
                         ? 'bg-cyan-500/20 text-neonCyan border border-neonCyan/40'
                         : tool.badge === 'WRITE'
                         ? 'bg-emerald-500/20 text-plasmaGreen border border-plasmaGreen/40'
-                        : 'bg-yellow-500/20 text-yellow-400 border border-yellow-400/40'
+                        : 'bg-yellow-500/20 dark:text-yellow-400 text-amber-800 border border-yellow-400/40'
                     }`}>
                       {tool.badge}
                     </span>
@@ -508,11 +508,11 @@ const McpLiveTester = () => {
   };
 
   return (
-    <div className="border-2 border-neonCyan dark:bg-slate-950/80 bg-white p-6 md:p-8 shadow-[6px_6px_0_#0f172a] relative">
-      <div className="flex items-center justify-between mb-6 pb-3 border-b dark:border-white/10 border-slate-200">
-        <div className="flex items-center gap-2.5">
+    <div className="border-2 border-neonCyan dark:bg-slate-950/80 bg-white p-4 sm:p-6 md:p-8 shadow-[6px_6px_0_#0f172a] relative">
+      <div className="flex flex-col items-start sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-3 border-b dark:border-white/10 border-slate-200">
+        <div className="flex min-w-0 items-center gap-2.5">
           <Terminal size={20} className="text-neonCyan animate-pulse" />
-          <h3 className="text-lg md:text-xl font-headline font-black uppercase text-slate-900 dark:text-white tracking-wider">
+          <h3 className="min-w-0 break-words text-lg md:text-xl font-headline font-black uppercase text-slate-900 dark:text-white tracking-wider">
             Élő MCP Tesztelő Konzol (Interactive Playground)
           </h3>
         </div>
@@ -556,7 +556,7 @@ const McpLiveTester = () => {
                     value={queryInput}
                     onChange={(e) => setQueryInput(e.target.value)}
                     placeholder="pl. RAG vektoros hasonlóság vagy CAD automatizáció"
-                    className="w-full dark:bg-slate-900 bg-white border border-slate-700 p-2.5 text-xs text-white outline-none focus:border-neonCyan"
+                    className="w-full dark:bg-slate-900 bg-white border border-slate-700 p-2.5 text-xs dark:text-white text-slate-950 outline-none focus:border-neonCyan"
                   />
                 </div>
                 <div>
@@ -602,7 +602,7 @@ const McpLiveTester = () => {
                     required
                     value={articleTitle}
                     onChange={(e) => setArticleTitle(e.target.value)}
-                    className="w-full dark:bg-slate-900 bg-white border border-slate-700 p-2 text-xs text-white outline-none"
+                    className="w-full dark:bg-slate-900 bg-white border border-slate-700 p-2 text-xs dark:text-white text-slate-950 outline-none"
                   />
                 </div>
                 <div>
@@ -613,7 +613,7 @@ const McpLiveTester = () => {
                     rows={3}
                     value={articleContent}
                     onChange={(e) => setArticleContent(e.target.value)}
-                    className="w-full dark:bg-slate-900 bg-white border border-slate-700 p-2 text-xs text-white outline-none"
+                    className="w-full dark:bg-slate-900 bg-white border border-slate-700 p-2 text-xs dark:text-white text-slate-950 outline-none"
                   />
                 </div>
               </>

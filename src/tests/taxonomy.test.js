@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getTreeFolders, getMultiCategoriesForDoc } from '../components/common/TacticalVaultExplorer.jsx';
+import { getTreeFolders, getMultiCategoriesForDoc } from '../utils/taxonomy.js';
 
 describe('Information Architecture & Taxonomy Unit Tests', () => {
   const sampleDoc = {

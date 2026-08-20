@@ -61,15 +61,15 @@ const Uplink = () => {
       <div className="container mx-auto px-6 relative z-10">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-6xl md:text-8xl font-headline font-black italic uppercase text-on-surface glitch-text">
+            <h2 className="max-w-full break-words text-5xl sm:text-6xl md:text-8xl font-headline font-black italic uppercase text-on-surface glitch-text">
               {title}
             </h2>
-            <p className="font-mono text-secondary-fixed mt-4 tracking-widest uppercase">
+            <p className="max-w-full break-words font-mono text-secondary-fixed mt-4 tracking-[0.12em] sm:tracking-widest uppercase">
               {subtitle}
             </p>
           </div>
           
-          <form action={formAction} className="bg-[var(--surface-panel)] p-8 md:p-12 border-2 dark:border-white/10 border-slate-900 rounded-none relative group shadow-[6px_6px_0_#0f172a] dark:shadow-none">
+          <form action={formAction} className="bg-[var(--surface-panel)] p-5 sm:p-8 md:p-12 border-2 dark:border-white/10 border-slate-900 rounded-none relative group shadow-[6px_6px_0_#0f172a] dark:shadow-none">
             <div className="absolute top-0 right-0 w-8 h-8 bg-secondary-fixed"></div>
             
             {/* Honeypot Trap field for spam bots (invisible to real humans) */}
@@ -86,35 +86,35 @@ const Uplink = () => {
             </div>
 
             <div className="space-y-8 font-mono">
-              <div className="flex items-center gap-4 relative">
-                <span className="dark:text-slate-500 text-slate-900 shrink-0 font-black">NÉV_ÉS_EMAIL:~$</span>
+              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4 relative">
+                <span className="self-start dark:text-slate-500 text-slate-900 sm:shrink-0 font-black">NÉV_ÉS_EMAIL:~$</span>
                 <input 
                   name="identity"
                   maxLength={120}
-                  className="bg-transparent border-b-2 dark:border-white/10 border-slate-900 focus:border-cyan-600 focus:ring-0 text-on-surface dark:placeholder:text-slate-600 placeholder:text-slate-500 w-full font-mono py-2 outline-none transition-all duration-300 peer font-bold" 
+                  className="min-w-0 bg-transparent border-b-2 dark:border-white/10 border-slate-900 focus:border-cyan-600 focus:ring-0 text-on-surface dark:placeholder:text-slate-600 placeholder:text-slate-500 w-full font-mono py-2 outline-none transition-all duration-300 peer font-bold"
                   placeholder="Kovács Péter (peter@ceg.hu)" 
                   type="text"
                   required
                 />
               </div>
-              <div className="flex items-center gap-4 relative">
-                <span className="dark:text-slate-500 text-slate-900 shrink-0 font-black">TÉMA:~$</span>
+              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4 relative">
+                <span className="self-start dark:text-slate-500 text-slate-900 sm:shrink-0 font-black">TÉMA:~$</span>
                 <input 
                   name="subject"
                   maxLength={120}
-                  className="bg-transparent border-b-2 dark:border-white/10 border-slate-900 focus:border-cyan-600 focus:ring-0 text-on-surface dark:placeholder:text-slate-600 placeholder:text-slate-500 w-full font-mono py-2 outline-none transition-all duration-300 peer font-bold" 
+                  className="min-w-0 bg-transparent border-b-2 dark:border-white/10 border-slate-900 focus:border-cyan-600 focus:ring-0 text-on-surface dark:placeholder:text-slate-600 placeholder:text-slate-500 w-full font-mono py-2 outline-none transition-all duration-300 peer font-bold"
                   placeholder="pl. Belső céges AI tudásbázis építése" 
                   type="text"
                   required
                 />
               </div>
-              <div className="flex items-start gap-4 relative">
-                <span className="dark:text-slate-500 text-slate-900 shrink-0 pt-2 font-black">ÜZENET:~$</span>
+              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-start sm:gap-4 relative">
+                <span className="self-start dark:text-slate-500 text-slate-900 sm:shrink-0 sm:pt-2 font-black">ÜZENET:~$</span>
                 <textarea 
                   name="message"
                   rows={4}
                   maxLength={1000}
-                  className="bg-transparent border-b-2 dark:border-white/10 border-slate-900 focus:border-cyan-600 focus:ring-0 text-on-surface dark:placeholder:text-slate-600 placeholder:text-slate-500 w-full font-mono py-2 outline-none transition-all duration-300 peer resize-none font-bold" 
+                  className="min-w-0 bg-transparent border-b-2 dark:border-white/10 border-slate-900 focus:border-cyan-600 focus:ring-0 text-on-surface dark:placeholder:text-slate-600 placeholder:text-slate-500 w-full font-mono py-2 outline-none transition-all duration-300 peer resize-none font-bold"
                   placeholder="Rövid leírás a feladatról..."
                 ></textarea>
               </div>
@@ -135,11 +135,11 @@ const Uplink = () => {
 
           {/* AI Agent / MCP Connection Callout */}
           <div className="mt-8 p-6 border-2 border-neonCyan dark:bg-slate-950/80 bg-cyan-50/50 shadow-[4px_4px_0_#0f172a] flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
+            <div className="flex min-w-0 items-center gap-4">
               <div className="p-3 bg-neonCyan/10 border border-neonCyan text-neonCyan shrink-0">
                 <span className="material-symbols-outlined text-2xl font-black">smart_toy</span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="text-[10px] font-mono text-neonCyan font-black uppercase tracking-widest block">
                   AGENTIC FIRST // MODEL CONTEXT PROTOCOL
                 </span>
@@ -161,7 +161,7 @@ const Uplink = () => {
             </a>
           </div>
 
-          <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+          <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 text-center">
             {[
               { label: 'linkedin', value: '/in/gaborszantoi', href: 'https://www.linkedin.com/in/gaborszantoi/', hoverClass: 'group-hover:text-secondary-fixed' },
               { label: 'github', value: 'github.com/Szantoi', href: 'https://github.com/Szantoi', hoverClass: 'group-hover:text-[#00ffff]' },
@@ -170,7 +170,7 @@ const Uplink = () => {
             ].map((social) => (
               <a key={social.label} className="group" href={social.href} target={social.href.startsWith('http') ? '_blank' : '_self'} rel="noreferrer">
                 <span className="block text-slate-500 font-mono text-[10px] mb-1 uppercase tracking-tighter">{social.label}</span>
-                <span className={`font-headline font-bold text-on-surface ${social.hoverClass} transition-colors`}>{social.value}</span>
+                <span className={`block break-words font-headline font-bold text-on-surface ${social.hoverClass} transition-colors`}>{social.value}</span>
               </a>
             ))}
           </div>

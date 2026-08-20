@@ -81,7 +81,7 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[99999] flex items-start sm:items-center justify-center p-4 sm:p-6 md:p-10 pt-24 sm:pt-28 pb-12 overflow-y-auto">
+      <div className="fixed inset-0 z-[99999] flex items-start sm:items-center justify-center p-3 sm:p-6 md:p-10 pt-20 sm:pt-28 pb-12 overflow-y-auto">
         {/* Backdrop */}
         <motion.div 
           initial={{ opacity: 0 }}
@@ -97,23 +97,23 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 15 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="relative w-full max-w-4xl bg-[var(--surface-panel)] border-2 border-neonCyan dark:bg-[#090d1d] bg-slate-900 text-white rounded-none shadow-[-10px_0_30px_rgba(0,255,255,0.2),10px_0_30px_rgba(255,0,255,0.2)] overflow-hidden z-10 my-auto max-h-[82vh] flex flex-col"
+          className="relative w-full max-w-4xl bg-[var(--surface-panel)] border-2 border-neonCyan dark:bg-[#090d1d] bg-slate-900 text-white rounded-none shadow-[-10px_0_30px_rgba(0,255,255,0.2),10px_0_30px_rgba(255,0,255,0.2)] overflow-hidden z-10 my-auto max-h-[calc(100dvh-5rem)] sm:max-h-[82vh] flex flex-col"
         >
           {/* Tactical Terminal Header Bar */}
-          <div className="bg-slate-950 px-5 py-3.5 flex items-center justify-between border-b-2 border-neonCyan/40 select-none">
-            <div className="flex items-center gap-3">
+          <div className="bg-slate-950 px-3 sm:px-5 py-3.5 flex min-w-0 items-center justify-between gap-2 border-b-2 border-neonCyan/40 select-none">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <div className="flex gap-1.5">
                 <span className="w-2.5 h-2.5 bg-plasmaGreen inline-block animate-pulse"></span>
                 <span className="w-2.5 h-2.5 bg-neonCyan inline-block"></span>
                 <span className="w-2.5 h-2.5 bg-neonMagenta inline-block"></span>
               </div>
-              <span className="font-mono text-xs text-neonCyan font-bold uppercase tracking-widest">
+              <span className="min-w-0 truncate font-mono text-[10px] sm:text-xs text-neonCyan font-bold uppercase tracking-[0.12em] sm:tracking-widest">
                 // {initialBadge} // RAG_NEURAL_RECALL
               </span>
             </div>
             <button
               onClick={onClose}
-              className="font-mono text-xs text-slate-400 hover:text-neonMagenta border border-transparent hover:border-neonMagenta px-2 py-0.5 transition-colors uppercase font-bold cursor-pointer"
+              className="shrink-0 font-mono text-[10px] sm:text-xs text-slate-400 hover:text-neonMagenta border border-transparent hover:border-neonMagenta px-2 py-0.5 transition-colors uppercase font-bold cursor-pointer"
               title="Bezárás (ESC)"
             >
               [ESC ✕]
@@ -121,24 +121,24 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
           </div>
 
           {/* Context Header */}
-          <div className="p-6 pb-4 border-b border-white/10 bg-slate-950/60">
+          <div className="p-4 sm:p-6 pb-4 border-b border-white/10 bg-slate-950/60">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <span className="text-[10px] font-mono text-neonMagenta font-black uppercase tracking-[0.2em] block mb-1">
+              <div className="min-w-0">
+                <span className="block max-w-full break-words text-[9px] sm:text-[10px] font-mono text-neonMagenta font-black uppercase tracking-[0.1em] sm:tracking-[0.2em] mb-1">
                   KAPCSOLÓDÓ TÉMAKÖR & SZAKMAI ÁLLÍTÁSOK
                 </span>
-                <h2 className="text-2xl font-headline font-black uppercase text-white tracking-tight">
+                <h2 className="break-words text-2xl font-headline font-black uppercase text-white tracking-tight">
                   {topicTitle}
                 </h2>
               </div>
-              <div className="font-mono text-xs bg-black/80 border border-neonCyan/30 px-3 py-1.5 flex items-center gap-2 self-start md:self-auto">
+              <div className="w-full md:w-auto min-w-0 font-mono text-xs bg-black/80 border border-neonCyan/30 px-3 py-1.5 flex flex-wrap items-center gap-2 self-start md:self-auto">
                 <span className="text-slate-400 text-[10px]">RAG KULCSSZÓ:</span>
                 <span className="text-neonCyan font-bold">"{searchQuery}"</span>
               </div>
             </div>
 
             {/* Filter Tabs */}
-            <div className="flex items-center gap-2 mt-5 font-mono text-xs">
+            <div className="flex flex-wrap items-center gap-2 mt-5 font-mono text-[10px] sm:text-xs">
               <button
                 onClick={() => setActiveFilter('all')}
                 className={`px-3 py-1 text-xs font-bold uppercase transition-all rounded-none cursor-pointer ${
@@ -199,7 +199,7 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
                     onClick={() => handleOpenDoc(item)}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <span className={`text-[10px] font-mono font-bold px-2 py-0.5 ${
                           isBlog 
                             ? 'bg-neonMagenta/20 text-neonMagenta border border-neonMagenta/40' 
@@ -226,7 +226,7 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
                       {item.matchSnippet || item.summary || item.content?.slice(0, 180)}
                     </p>
 
-                    <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between font-mono text-[11px]">
+                    <div className="mt-3 pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px]">
                       <span className="text-slate-500 text-[10px]">
                         OLVASÁSI IDŐ: {item.read_time || '5 PERC'}
                       </span>

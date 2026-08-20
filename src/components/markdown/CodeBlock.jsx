@@ -29,7 +29,7 @@ const MermaidDiagram = ({ code }) => {
           tertiaryColor: '#1e293b'
         },
         fontFamily: 'JetBrains Mono, monospace',
-        securityLevel: 'loose',
+        securityLevel: 'strict',
       });
 
       mermaid.render(idRef.current, code.trim())

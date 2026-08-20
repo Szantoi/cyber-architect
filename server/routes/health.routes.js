@@ -1,12 +1,8 @@
 import { Router } from 'express';
-import os from 'os';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { db } from '../db.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import os from 'node:os';
+import fs from 'node:fs';
+import { db, dbPath } from '../db.js';
+import { logger } from '../logger.js';
 
 export const healthRouter = Router();
 
@@ -26,6 +22,7 @@ healthRouter.get('/health', (req, res) => {
     dbLatencyMs = parseFloat((performance.now() - t0).toFixed(2));
   } catch (err) {
     dbStatus = 'DISCONNECTED';
+    logger.warn('[HEALTH_CHECK] Database probe failed', { error: err.message });
   }
 
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
@@ -55,10 +52,10 @@ healthRouter.get('/metrics', (req, res) => {
   let walSizeBytes = 0;
   let terminalsCount = 0;
   let auditLogsCount = 0;
+  let diagnosticsStatus = 'OK';
 
   try {
-    const dbPath = path.resolve(__dirname, '../portfolio.db');
-    const walPath = path.resolve(__dirname, '../portfolio.db-wal');
+    const walPath = `${dbPath}-wal`;
 
     if (fs.existsSync(dbPath)) {
       dbSizeBytes = fs.statSync(dbPath).size;
@@ -72,7 +69,10 @@ healthRouter.get('/metrics', (req, res) => {
 
     const aRow = db.prepare('SELECT COUNT(*) as count FROM audit_logs').get();
     auditLogsCount = aRow ? aRow.count : 0;
-  } catch {}
+  } catch (err) {
+    diagnosticsStatus = 'DEGRADED';
+    logger.warn('[METRICS_CHECK] Database diagnostics failed', { error: err.message });
+  }
 
   res.json({
     timestamp: new Date().toISOString(),
@@ -91,6 +91,7 @@ healthRouter.get('/metrics', (req, res) => {
       externalMb: parseFloat((memoryUsage.external / 1024 / 1024).toFixed(2))
     },
     database: {
+      diagnosticsStatus,
       sizeKb: parseFloat((dbSizeBytes / 1024).toFixed(2)),
       walSizeKb: parseFloat((walSizeBytes / 1024).toFixed(2)),
       terminalsCount,

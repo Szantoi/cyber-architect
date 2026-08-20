@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkFrontmatter from 'remark-frontmatter';
 import rehypeSlug from 'rehype-slug';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { Link } from 'react-router-dom';
 import {
   Info,
@@ -20,6 +21,35 @@ import CodeBlock from './CodeBlock.jsx';
 import TacticalAudioPlayer from '../multimedia/TacticalAudioPlayer.jsx';
 import VideoPlayer from '../multimedia/VideoPlayer.jsx';
 import { analyzeSentenceRelevance } from '../../utils/semanticHighlighter.js';
+
+const MARKDOWN_SANITIZE_SCHEMA = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    div: [
+      ...(defaultSchema.attributes?.div || []),
+      ['dataDirective', /^directive-(audio|video|details)-\d+$/],
+    ],
+    code: [
+      ...(defaultSchema.attributes?.code || []),
+      ['className', /^language-[\w-]+$/],
+    ],
+  },
+};
+
+const sanitizeResourceUrl = (value) => {
+  if (typeof value !== 'string') return '';
+  const url = value.trim();
+  const hasControlCharacter = Array.from(url).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint <= 31 || codePoint === 127;
+  });
+  if (!url || hasControlCharacter) return '';
+
+  if (/^https?:\/\//i.test(url)) return url;
+  if (/^(?:\/|\.\/|\.\.\/)(?!\/)/.test(url)) return url;
+  return '';
+};
 
 // ─────────────────────────────────────────────────────────────
 // MarkdownRenderer – CommonMark & GFM Parser & Vizuális Rendszer
@@ -374,39 +404,6 @@ const Del = ({ children }) => (
 );
 
 // ─────────────────────────────────────────────────────────────
-// Fejlécek ID-k kinyerése a TOC generáláshoz (H2, H3, H4 támogatás ékezetekkel)
-// ─────────────────────────────────────────────────────────────
-export const extractHeadings = (markdownContent) => {
-  if (!markdownContent || typeof markdownContent !== 'string') return [];
-  const headings = [];
-  const lines = markdownContent.split('\n');
-  lines.forEach((line) => {
-    const h2 = line.match(/^##\s+(.+)$/);
-    const h3 = line.match(/^###\s+(.+)$/);
-    const h4 = line.match(/^####\s+(.+)$/);
-    
-    if (h2) {
-      const rawText = h2[1].trim();
-      const cleanText = rawText.replace(/[*_[\]`]/g, '').trim();
-      const id = cleanText.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, '-');
-      headings.push({ id, text: cleanText, level: 2 });
-    } else if (h3) {
-      const rawText = h3[1].trim();
-      const cleanText = rawText.replace(/[*_[\]`]/g, '').trim();
-      const id = cleanText.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, '-');
-      headings.push({ id, text: cleanText, level: 3 });
-    } else if (h4) {
-      const rawText = h4[1].trim();
-      const cleanText = rawText.replace(/[*_[\]`]/g, '').trim();
-      const id = cleanText.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, '-');
-      headings.push({ id, text: cleanText, level: 4 });
-    }
-  });
-  return headings;
-};
-
-
-// ─────────────────────────────────────────────────────────────
 // Custom Direktíva Parser
 // Markdown speciális blokkok előfeldolgozása, mielőtt ReactMarkdown kapja:
 //   :::audio ...
@@ -568,10 +565,12 @@ const MarkdownRenderer = ({
       if (!dir) return null;
 
       if (dir.type === 'audio') {
+        const safeSrc = sanitizeResourceUrl(dir.attrs.src);
+        if (!safeSrc) return null;
         return (
           <div className="my-8">
             <TacticalAudioPlayer
-              src={dir.attrs.src}
+              src={safeSrc}
               title={dir.attrs.title || 'AUDIO DEEP DIVE'}
               subtitle={dir.attrs.subtitle || 'NotebookLM Generated Podcast'}
               host1={dir.attrs.host1}
@@ -581,10 +580,12 @@ const MarkdownRenderer = ({
         );
       }
       if (dir.type === 'video') {
+        const safeSrc = sanitizeResourceUrl(dir.attrs.src);
+        if (!safeSrc) return null;
         return (
           <div className="my-8">
             <VideoPlayer
-              src={dir.attrs.src}
+              src={safeSrc}
               title={dir.attrs.title}
               caption={dir.attrs.caption}
             />
@@ -1132,7 +1133,7 @@ const MarkdownRenderer = ({
     <div className="max-w-none font-body">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkFrontmatter]}
-        rehypePlugins={[rehypeRaw, rehypeSlug]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA], rehypeSlug]}
         components={components}
       >
         {processedContent}
