@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Public User Journey Suite', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('main')).toBeVisible();
   });
 
   test('loads home page with hero section, title and cyber styling', async ({ page }) => {

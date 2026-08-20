@@ -14,6 +14,9 @@ dist
 **/*drive-tokens*.json
 **/token.json
 **/tokens.json
+# The Drive client/service-account filenames are user-defined and may not
+# contain a conventional secret marker. No runtime JSON belongs in this folder.
+server/config/*.json
 **/*.pem
 **/*.key
 **/*.cert

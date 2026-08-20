@@ -9,7 +9,12 @@ ENV HUSKY=0
 COPY package*.json ./
 RUN npm ci
 
-COPY . .
+# Keep backend configuration and local credentials out of the frontend builder
+# entirely. The frontend build only needs these tracked sources.
+COPY index.html vite.config.js ./
+COPY public ./public
+COPY src ./src
+COPY server/scripts/buildFrontend.js ./server/scripts/buildFrontend.js
 RUN npm run build
 
 # ============================================================================

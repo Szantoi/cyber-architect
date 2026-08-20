@@ -12,6 +12,8 @@ const BlogPostsTab = ({
   showMarkdownCheatSheet,
   setShowMarkdownCheatSheet,
   onDriveSync,
+  onEmptyDriveRepair,
+  onDriveReconnect,
   isSyncing,
   syncResult,
   setSyncResult
@@ -48,7 +50,38 @@ const BlogPostsTab = ({
 
           <button
             type="button"
-            onClick={onDriveSync}
+            onClick={onDriveReconnect}
+            disabled={isSyncing}
+            aria-label="Google Drive újracsatlakoztatása"
+            className={`px-4 py-2 border-2 uppercase text-xs font-bold flex items-center gap-2 transition-all shadow-[2px_2px_0_#0f172a] dark:shadow-none ${
+              isSyncing
+                ? 'border-plasmaGreen/30 text-plasmaGreen/50 cursor-not-allowed bg-slate-900/50'
+                : 'border-slate-900 dark:border-plasmaGreen/50 text-emerald-700 dark:text-plasmaGreen dark:bg-slate-900 bg-emerald-50 hover:bg-slate-900 hover:text-white'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm" aria-hidden="true">add_to_drive</span>
+            <span>GOOGLE DRIVE ÚJRACSATLAKOZTATÁS</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onDriveSync(true)}
+            disabled={isSyncing}
+            className={`px-4 py-2 border-2 uppercase text-xs font-bold flex items-center gap-2 transition-all shadow-[2px_2px_0_#0f172a] dark:shadow-none ${
+              isSyncing
+                ? 'border-neonMagenta/30 text-neonMagenta/50 cursor-not-allowed bg-slate-900/50'
+                : 'border-slate-900 dark:border-neonCyan/50 text-neonCyan dark:bg-slate-900 bg-slate-100 hover:bg-slate-900 hover:text-white'
+            }`}
+          >
+            <span className={`material-symbols-outlined text-sm ${isSyncing ? 'animate-spin' : ''}`}>
+              {isSyncing ? 'sync' : 'preview'}
+            </span>
+            <span>{isSyncing ? 'ELLENŐRZÉS...' : 'DRIVE ELŐNÉZET'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onDriveSync(false)}
             disabled={isSyncing}
             className={`px-4 py-2 border-2 uppercase text-xs font-bold flex items-center gap-2 transition-all shadow-[2px_2px_0_#0f172a] dark:shadow-none ${
               isSyncing
@@ -56,10 +89,36 @@ const BlogPostsTab = ({
                 : 'border-slate-900 dark:border-neonMagenta/50 text-neonMagenta dark:bg-slate-900 bg-slate-100 hover:bg-slate-900 hover:text-white'
             }`}
           >
-            <span className={`material-symbols-outlined text-sm ${isSyncing ? 'animate-spin' : ''}`}>
-              {isSyncing ? 'sync' : 'cloud_sync'}
-            </span>
-            <span>{isSyncing ? 'SZINKRONIZÁLÁS...' : '⟳ DRIVE SYNC'}</span>
+            <span className="material-symbols-outlined text-sm">cloud_download</span>
+            <span>DRIVE → DB ALKALMAZÁS</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onEmptyDriveRepair(true)}
+            disabled={isSyncing}
+            className={`px-4 py-2 border-2 uppercase text-xs font-bold flex items-center gap-2 transition-all shadow-[2px_2px_0_#0f172a] dark:shadow-none ${
+              isSyncing
+                ? 'border-amber-400/30 text-amber-500/50 cursor-not-allowed bg-slate-900/50'
+                : 'border-slate-900 dark:border-amber-400/50 text-amber-600 dark:text-amber-400 dark:bg-slate-900 bg-slate-100 hover:bg-slate-900 hover:text-white'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm">troubleshoot</span>
+            <span>ÜRES DRIVE JAVÍTÁS ELŐNÉZET</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onEmptyDriveRepair(false)}
+            disabled={isSyncing}
+            className={`px-4 py-2 border-2 uppercase text-xs font-bold flex items-center gap-2 transition-all shadow-[2px_2px_0_#0f172a] dark:shadow-none ${
+              isSyncing
+                ? 'border-amber-400/30 text-amber-500/50 cursor-not-allowed bg-slate-900/50'
+                : 'border-slate-900 dark:border-amber-500 text-amber-700 dark:text-amber-300 dark:bg-slate-900 bg-amber-50 hover:bg-slate-900 hover:text-white'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm">cloud_upload</span>
+            <span>ÜRES DRIVE FÁJLOK JAVÍTÁSA</span>
           </button>
 
           <button
@@ -129,40 +188,90 @@ const BlogPostsTab = ({
           >✕</button>
           <div className="flex items-center gap-2 mb-3">
             <span className="material-symbols-outlined text-neonMagenta text-base">cloud_done</span>
-            <span className="text-neonMagenta font-black uppercase tracking-wider">DRIVE SYNC EREDMÉNY</span>
+            <span className="text-neonMagenta font-black uppercase tracking-wider">
+              {syncResult.operation === 'EMPTY_DRIVE_REPAIR'
+                ? (syncResult.dry_run ? 'ÜRES DRIVE JAVÍTÁS ELŐNÉZET — NINCS ÍRÁS' : 'ÜRES DRIVE FÁJLOK JAVÍTÁSA')
+                : (syncResult.dry_run ? 'DRIVE ELŐNÉZET — NINCS ÍRÁS' : 'DRIVE PULL EREDMÉNY')}
+            </span>
             <span className="text-[10px] text-slate-900 dark:text-slate-400 px-2 py-0.5 dark:bg-black bg-slate-100 border-2 dark:border-white/10 border-slate-900 ml-auto font-bold">{syncResult.mode}</span>
           </div>
-          <div className="grid grid-cols-3 gap-4 mb-3">
-            <div className="text-center p-2 dark:bg-black/60 bg-slate-50 border-2 dark:border-white/10 border-slate-900">
-              <div className="text-2xl font-black text-neonCyan">{syncResult.synced || 0}</div>
-              <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Összes</div>
+          {syncResult.operation === 'EMPTY_DRIVE_REPAIR' && (
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="text-center p-2 dark:bg-black/60 bg-amber-50 border-2 dark:border-amber-400/30 border-slate-900">
+                <div className="text-2xl font-black text-amber-500">{syncResult.would_repair ?? syncResult.wouldRepair ?? 0}</div>
+                <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Javítható</div>
+              </div>
+              <div className="text-center p-2 dark:bg-black/60 bg-emerald-50 border-2 dark:border-plasmaGreen/30 border-slate-900">
+                <div className="text-2xl font-black text-plasmaGreen">{syncResult.repaired ?? 0}</div>
+                <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Javítva</div>
+              </div>
             </div>
-            <div className="text-center p-2 dark:bg-black/60 bg-slate-50 border-2 dark:border-plasmaGreen/20 border-slate-900">
-              <div className="text-2xl font-black text-plasmaGreen">{syncResult.created || 0}</div>
-              <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Új fájl</div>
+          )}
+          {syncResult.operation !== 'EMPTY_DRIVE_REPAIR' && (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
+              <div className="text-center p-2 dark:bg-black/60 bg-slate-50 border-2 dark:border-white/10 border-slate-900">
+                <div className="text-2xl font-black text-slate-900 dark:text-white">{syncResult.discovered ?? syncResult.synced ?? 0}</div>
+                <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Felderítve</div>
+              </div>
+              <div className="text-center p-2 dark:bg-black/60 bg-slate-50 border-2 dark:border-white/10 border-slate-900">
+                <div className="text-2xl font-black text-neonCyan">{syncResult.processed ?? syncResult.synced ?? 0}</div>
+                <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Feldolgozva</div>
+              </div>
+              <div className="text-center p-2 dark:bg-black/60 bg-slate-50 border-2 dark:border-plasmaGreen/20 border-slate-900">
+                <div className="text-2xl font-black text-plasmaGreen">{syncResult.created || 0}</div>
+                <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Új fájl</div>
+              </div>
+              <div className="text-center p-2 dark:bg-black/60 bg-slate-50 border-2 dark:border-neonCyan/20 border-slate-900">
+                <div className="text-2xl font-black text-neonCyan">{syncResult.updated || 0}</div>
+                <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Frissítve</div>
+              </div>
+              <div className="text-center p-2 dark:bg-black/60 bg-slate-50 border-2 dark:border-amber-400/30 border-slate-900">
+                <div className="text-2xl font-black text-amber-500">
+                  {syncResult.skipped_count ?? (Array.isArray(syncResult.skipped) ? syncResult.skipped.length : (syncResult.skipped || 0))}
+                </div>
+                <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Kihagyva</div>
+              </div>
             </div>
-            <div className="text-center p-2 dark:bg-black/60 bg-slate-50 border-2 dark:border-neonCyan/20 border-slate-900">
-              <div className="text-2xl font-black text-neonCyan">{syncResult.updated || 0}</div>
-              <div className="text-[10px] dark:text-slate-400 text-slate-700 font-bold uppercase">Frissítve</div>
-            </div>
-          </div>
+          )}
           {syncResult.files && syncResult.files.length > 0 && (
             <div className="space-y-1 max-h-32 overflow-y-auto font-medium">
               {syncResult.files.map((f, i) => (
                 <div key={i} className="flex items-center gap-2 text-[10px]">
-                  <span className={f.status === 'CREATED' ? 'text-plasmaGreen font-bold' : 'text-neonCyan font-bold'}>
-                    {f.status === 'CREATED' ? '+ NEW' : '↑ UPD'}
+                  <span className={f.status?.includes('CREATE') || f.status === 'REPAIRED' ? 'text-plasmaGreen font-bold' : (f.status?.includes('SKIP') || f.status?.includes('REFUSED') ? 'text-amber-500 font-bold' : 'text-neonCyan font-bold')}>
+                    {f.status?.includes('CREATE')
+                      ? '+ NEW'
+                      : (f.status === 'REPAIRED'
+                          ? '✓ FIXED'
+                          : (f.status?.includes('REPAIR')
+                              ? '◇ REPAIR'
+                              : (f.status?.includes('SKIP') || f.status?.includes('REFUSED') ? '○ SKIP' : '↑ UPD')))}
                   </span>
-                  <span className="text-slate-800 dark:text-slate-300 font-bold">{f.file}</span>
-                  <span className="text-slate-500 ml-auto">/{f.slug}</span>
+                  <span className="text-slate-800 dark:text-slate-300 font-bold">{f.file || f.fileName || f.path || 'Drive file'}</span>
+                  {f.slug && <span className="text-slate-500 ml-auto">/{f.slug}</span>}
                 </div>
               ))}
+            </div>
+          )}
+          {syncResult.collisions && (Array.isArray(syncResult.collisions) ? syncResult.collisions.length > 0 : syncResult.collisions > 0) && (
+            <div className="mt-2 text-amber-500 font-bold text-[10px]">
+              ⚠ SLUG ÜTKÖZÉSEK: {Array.isArray(syncResult.collisions) ? syncResult.collisions.length : syncResult.collisions} — stabil, egyedi URL-re átnevezve
             </div>
           )}
           {syncResult.errors && syncResult.errors.length > 0 && (
             <div className="mt-2 space-y-1">
               {syncResult.errors.map((e, i) => (
-                <div key={i} className="text-neonMagenta font-bold text-[10px]">⚠ {e.file}: {e.error}</div>
+                <div key={i} className="text-neonMagenta font-bold text-[10px]">
+                  ⚠ {e.file || e.fileName || e.source || 'Drive'}: {e.error || e.code || e.message || 'UNKNOWN_ERROR'}
+                </div>
+              ))}
+            </div>
+          )}
+          {syncResult.refused && syncResult.refused.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {syncResult.refused.map((item, i) => (
+                <div key={i} className="text-amber-500 font-bold text-[10px]">
+                  ○ {item.file || item.fileName || item.source || 'Drive'}: {item.code || item.reason || item.message || 'REPAIR_REFUSED'}
+                </div>
               ))}
             </div>
           )}

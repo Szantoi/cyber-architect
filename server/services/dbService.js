@@ -4,12 +4,48 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { db, initDatabase } from '../db.js';
 import { verifyPin as verifyHashPin, hashPin } from '../security/auth.js';
+import { getAdminPinPolicyViolations } from '../security/pinPolicy.js';
 import embeddingService from './embeddingService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_PROJECT_DIR = path.resolve(__dirname, '../../../');
 const TERMINALS_ROOT = path.join(ROOT_PROJECT_DIR, 'terminals');
+const CANONICAL_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MAX_SLUG_LENGTH = 160;
+
+function assertCanonicalSlug(value) {
+  const normalized = String(value || '').trim();
+  if (
+    !normalized
+    || normalized.length > MAX_SLUG_LENGTH
+    || !CANONICAL_SLUG_PATTERN.test(normalized)
+  ) {
+    throw new Error('INVALID_SLUG: Use lowercase letters, numbers, and single hyphens only.');
+  }
+  return normalized;
+}
+
+function generateCanonicalSlug(title) {
+  const base = String(title || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, MAX_SLUG_LENGTH - 6)
+    .replace(/-+$/g, '');
+  const suffix = Date.now().toString(36).slice(-5);
+  return `${base || 'document'}-${suffix}`;
+}
+
+function assertContentType(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized !== 'blog' && normalized !== 'knowledge') {
+    throw new Error('INVALID_CONTENT_TYPE: Expected blog or knowledge.');
+  }
+  return normalized;
+}
 
 // Ensure database schema is initialized
 initDatabase();
@@ -512,6 +548,19 @@ export const dbService = {
     return post ? this._parseBlogPost(post) : null;
   },
 
+  getBlogPostByDriveFileId(driveFileId) {
+    const normalizedDriveFileId = String(driveFileId || '').trim();
+    if (!normalizedDriveFileId) return null;
+
+    const post = db.prepare(`
+      SELECT *
+      FROM blog_posts
+      WHERE TRIM(drive_file_id) = ?
+      LIMIT 1
+    `).get(normalizedDriveFileId);
+    return post ? this._parseBlogPost(post) : null;
+  },
+
   _parseBlogPost(post) {
     if (!post) return null;
     let dimensions = {};
@@ -551,8 +600,7 @@ export const dbService = {
       throw new Error('MISSING_PARAMETER: title, summary, and content are required');
     }
 
-    const baseSlug = (slug || title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
-    const finalSlug = slug || (baseSlug + '-' + Date.now().toString(36).slice(-4));
+    const finalSlug = slug ? assertCanonicalSlug(slug) : generateCanonicalSlug(title);
     const postDate = String(created_at || new Date().toISOString().split('T')[0]);
     const dimsJson = JSON.stringify(typeof dimensions === 'object' ? dimensions : {});
 
@@ -570,7 +618,7 @@ export const dbService = {
       `).run(
         Number(id),
         String(project_id || 'prj_general'),
-        String(content_type || 'blog'),
+        assertContentType(content_type || 'blog'),
         finalSlug,
         String(title),
         String(summary),
@@ -580,7 +628,7 @@ export const dbService = {
         visibility === 'private' ? 'private' : 'public',
         String(audio_url || ''),
         String(video_url || ''),
-        String(drive_file_id || ''),
+        String(drive_file_id || '').trim(),
         String(drive_modified_time || ''),
         embedJson,
         String(read_time || '4 PERC'),
@@ -593,7 +641,7 @@ export const dbService = {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         String(project_id || 'prj_general'),
-        String(content_type || 'blog'),
+        assertContentType(content_type || 'blog'),
         finalSlug,
         String(title),
         String(summary),
@@ -603,7 +651,7 @@ export const dbService = {
         visibility === 'private' ? 'private' : 'public',
         String(audio_url || ''),
         String(video_url || ''),
-        String(drive_file_id || ''),
+        String(drive_file_id || '').trim(),
         String(drive_modified_time || ''),
         embedJson,
         String(read_time || '4 PERC'),
@@ -654,7 +702,10 @@ export const dbService = {
     const nextContent = content !== undefined ? String(content) : prevState.content;
     const nextCategory = category !== undefined ? String(category) : prevState.category;
     const nextDimensions = dimensions !== undefined ? dimensions : (prevState.dimensions || {});
-    const nextContentType = content_type !== undefined ? String(content_type) : (prevState.content_type || 'blog');
+    const nextContentType = content_type !== undefined
+      ? assertContentType(content_type)
+      : assertContentType(prevState.content_type || 'blog');
+    const nextSlug = slug !== undefined ? assertCanonicalSlug(slug) : prevState.slug;
 
     const dimsJson = JSON.stringify(typeof nextDimensions === 'object' ? nextDimensions : {});
 
@@ -678,7 +729,7 @@ export const dbService = {
     `).run(
       project_id !== undefined ? String(project_id) : prevState.project_id,
       nextContentType,
-      slug !== undefined ? String(slug) : prevState.slug,
+      nextSlug,
       nextTitle,
       nextSummary,
       nextContent,
@@ -687,7 +738,7 @@ export const dbService = {
       visibility !== undefined ? (visibility === 'private' ? 'private' : 'public') : prevState.visibility,
       audio_url !== undefined ? String(audio_url) : prevState.audio_url,
       video_url !== undefined ? String(video_url) : prevState.video_url,
-      drive_file_id !== undefined ? String(drive_file_id) : prevState.drive_file_id,
+      drive_file_id !== undefined ? String(drive_file_id).trim() : prevState.drive_file_id,
       drive_modified_time !== undefined ? String(drive_modified_time) : prevState.drive_modified_time,
       embedJson,
       read_time !== undefined ? String(read_time) : prevState.read_time,
@@ -1266,10 +1317,12 @@ export const dbService = {
   },
 
   updatePin(newPin, actor = 'SYSTEM') {
-    if (!newPin || String(newPin).trim().length < 4) {
-      throw new Error('PIN_CODE_TOO_SHORT: PIN must be at least 4 characters');
+    const normalizedPin = String(newPin ?? '').trim();
+    const policyViolations = getAdminPinPolicyViolations(normalizedPin);
+    if (policyViolations.length > 0) {
+      throw new Error(`PIN_POLICY_VIOLATION: ${policyViolations.join(',')}`);
     }
-    const hashedPin = hashPin(String(newPin).trim());
+    const hashedPin = hashPin(normalizedPin);
     db.prepare('UPDATE auth SET pin_code = ? WHERE id = 1').run(hashedPin);
     
     this.recordAuditLog({

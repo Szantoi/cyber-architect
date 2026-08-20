@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { dbService } from '../services/dbService.js';
 import { logger } from '../logger.js';
 import { authMiddleware, generateAdminToken } from '../security/auth.js';
@@ -9,6 +10,127 @@ import { loginSchema, updatePinSchema } from '../schemas/auth.schema.js';
 import { settingsSchema } from '../schemas/settings.schema.js';
 
 export const adminRouter = Router();
+
+const contentTypeSchema = z.enum(['blog', 'knowledge']);
+const contentTypeFilterSchema = z.enum(['all', 'blog', 'knowledge']);
+const visibilityFilterSchema = z.enum(['all', 'public', 'private']);
+
+const optionalHttpUrlSchema = z.string()
+  .trim()
+  .max(2048, 'A videó URL legfeljebb 2048 karakter lehet.')
+  .refine((value) => {
+    if (!value) return true;
+
+    try {
+      const parsedUrl = new URL(value);
+      return parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:';
+    } catch {
+      return false;
+    }
+  }, 'A videó URL érvényes HTTP vagy HTTPS cím legyen.');
+
+const canonicalSlugSchema = z.string()
+  .trim()
+  .max(160, 'A slug legfeljebb 160 karakter lehet.')
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'A slug csak kisbetűt, számot és egyszeres kötőjelet tartalmazhat.');
+const createSlugSchema = z.union([z.literal(''), canonicalSlugSchema]);
+
+const adminContentListQuerySchema = z.object({
+  projectId: z.string().trim().min(1).max(128).optional().default('all'),
+  visibility: visibilityFilterSchema.optional().default('all'),
+  content_type: contentTypeFilterSchema.optional().default('all')
+}).passthrough();
+
+const createAdminContentSchema = z.object({
+  content_type: contentTypeSchema.optional().default('blog'),
+  slug: createSlugSchema.optional(),
+  video_url: optionalHttpUrlSchema.optional().default('')
+}).passthrough();
+
+const updateAdminContentSchema = z.object({
+  content_type: contentTypeSchema.optional(),
+  slug: canonicalSlugSchema.optional(),
+  video_url: optionalHttpUrlSchema.optional()
+}).passthrough();
+
+// Serialize exports per post. Each queued operation re-reads the latest row so
+// an older, slower request can never overwrite a newer admin edit on Drive.
+const driveExportQueues = new Map();
+
+async function exportLatestPostToDrive(postId) {
+  const queueKey = String(postId);
+  const previous = driveExportQueues.get(queueKey) || Promise.resolve();
+  const operation = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const latestPost = dbService.getBlogPostById(postId);
+      if (!latestPost) {
+        return { status: 'SKIPPED', reason: 'POST_NOT_FOUND' };
+      }
+
+      const driveResult = await driveSyncService.exportPostToDrive(latestPost);
+      if (driveResult?.drive_file_id) {
+        // Only source metadata is applied here. updateBlogPost preserves any
+        // content fields that a newer request may already have changed.
+        if (dbService.getBlogPostById(postId)) {
+          dbService.updateBlogPost(postId, {
+            drive_file_id: driveResult.drive_file_id,
+            drive_modified_time: driveResult.drive_modified_time
+          }, 'DRIVE_EXPORT_SYNC');
+        }
+        return {
+          ...driveResult,
+          status: driveResult.status || (
+            driveResult.local_error
+              ? (driveResult.cloud_written ? 'PARTIAL' : 'FAILED')
+              : (driveResult.cloud_written ? 'SYNCED' : (driveResult.local_written ? 'LOCAL_ONLY' : 'SKIPPED'))
+          )
+        };
+      }
+
+      if (driveResult) {
+        return {
+          ...driveResult,
+          status: driveResult.status || (
+            driveResult.local_error
+              ? (driveResult.cloud_written ? 'PARTIAL' : 'FAILED')
+              : (driveResult.local_written ? 'LOCAL_ONLY' : 'SKIPPED')
+          )
+        };
+      }
+      return { status: 'SKIPPED' };
+    });
+
+  driveExportQueues.set(queueKey, operation);
+  try {
+    return await operation;
+  } finally {
+    if (driveExportQueues.get(queueKey) === operation) {
+      driveExportQueues.delete(queueKey);
+    }
+  }
+}
+
+function sendQueryValidationError(req, res, result) {
+  const errors = result.error.issues.map(issue => ({
+    field: issue.path.join('.'),
+    message: issue.message
+  }));
+
+  logger.warn(`[VALIDATION_FAILED] ${req.method} ${req.originalUrl}`, {
+    source: 'query',
+    errors,
+    ip: req.ip
+  });
+
+  return res.status(400).json({
+    success: false,
+    error: 'VALIDATION_ERROR',
+    message: 'Érvénytelen bemeneti adatok.',
+    details: errors,
+    timestamp: new Date().toISOString()
+  });
+}
 
 // 1. Admin Authentication (Brute-Force Protected & Zod Validated)
 adminRouter.post('/admin/login', authLimiter, validateBody(loginSchema), (req, res) => {
@@ -189,11 +311,17 @@ adminRouter.get('/admin/knowledge/search', authMiddleware, (req, res) => {
 // 6. Manage Blog Posts & Knowledge Items
 adminRouter.get('/admin/blog', authMiddleware, (req, res) => {
   try {
-    const { projectId, visibility } = req.query;
+    const parsedQuery = adminContentListQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      return sendQueryValidationError(req, res, parsedQuery);
+    }
+
+    const { projectId, visibility, content_type } = parsedQuery.data;
     const posts = dbService.getBlogPosts({
       publishedOnly: false,
-      visibility: visibility || 'all',
-      projectId: projectId || 'all'
+      visibility,
+      projectId,
+      contentType: content_type
     });
     res.json(posts);
   } catch (err) {
@@ -202,11 +330,11 @@ adminRouter.get('/admin/blog', authMiddleware, (req, res) => {
   }
 });
 
-adminRouter.post('/admin/blog', authMiddleware, async (req, res) => {
+adminRouter.post('/admin/blog', authMiddleware, validateBody(createAdminContentSchema), async (req, res) => {
   try {
-    const { project_id, slug, title, summary, content, category, dimensions, visibility, audio_url, read_time, published } = req.body;
-    const post = dbService.createBlogPost({
+    const {
       project_id,
+      content_type,
       slug,
       title,
       summary,
@@ -215,32 +343,14 @@ adminRouter.post('/admin/blog', authMiddleware, async (req, res) => {
       dimensions,
       visibility,
       audio_url,
+      video_url,
       read_time,
       published
-    }, 'ADMIN_DASHBOARD');
-
-    driveSyncService.exportPostToDrive(post).then(driveResult => {
-      if (driveResult && driveResult.drive_file_id) {
-        dbService.updateBlogPost(post.id, {
-          drive_file_id: driveResult.drive_file_id,
-          drive_modified_time: driveResult.drive_modified_time
-        }, 'DRIVE_EXPORT_SYNC');
-      }
-    }).catch(err => logger.error('[DRIVE_EXPORT_BACKGROUND_ERROR]', err));
-
-    logger.info(`Blog post created & queued for Drive sync: "${title}" (/${post.slug})`);
-    res.json({ success: true, id: post.id, slug: post.slug });
-  } catch (err) {
-    logger.error('Error inserting blog post', err);
-    res.status(500).json({ error: 'INSERT_FAILED' });
-  }
-});
-
-adminRouter.put('/admin/blog/:id', authMiddleware, async (req, res) => {
-  try {
-    const { project_id, title, summary, content, category, dimensions, visibility, audio_url, read_time, published, slug } = req.body;
-    const updated = dbService.updateBlogPost(req.params.id, {
+    } = req.body;
+    const post = dbService.createBlogPost({
       project_id,
+      content_type,
+      slug,
       title,
       summary,
       content,
@@ -248,22 +358,74 @@ adminRouter.put('/admin/blog/:id', authMiddleware, async (req, res) => {
       dimensions,
       visibility,
       audio_url,
+      video_url,
+      read_time,
+      published
+    }, 'ADMIN_DASHBOARD');
+
+    let driveSync;
+    try {
+      driveSync = await exportLatestPostToDrive(post.id);
+    } catch (driveError) {
+      logger.error('[DRIVE_EXPORT_ERROR] Content was saved locally, but export failed.', driveError, {
+        postId: post.id
+      });
+      driveSync = { status: 'FAILED', code: 'DRIVE_EXPORT_FAILED' };
+    }
+
+    logger.info(`Blog post created: "${title}" (/${post.slug})`);
+    res.json({ success: true, id: post.id, slug: post.slug, drive_sync: driveSync });
+  } catch (err) {
+    logger.error('Error inserting blog post', err);
+    res.status(500).json({ error: 'INSERT_FAILED' });
+  }
+});
+
+adminRouter.put('/admin/blog/:id', authMiddleware, validateBody(updateAdminContentSchema), async (req, res) => {
+  try {
+    const {
+      project_id,
+      content_type,
+      title,
+      summary,
+      content,
+      category,
+      dimensions,
+      visibility,
+      audio_url,
+      video_url,
+      read_time,
+      published,
+      slug
+    } = req.body;
+    const updated = dbService.updateBlogPost(req.params.id, {
+      project_id,
+      content_type,
+      title,
+      summary,
+      content,
+      category,
+      dimensions,
+      visibility,
+      audio_url,
+      video_url,
       read_time,
       published,
       slug
     }, 'ADMIN_DASHBOARD');
 
-    driveSyncService.exportPostToDrive(updated).then(driveResult => {
-      if (driveResult && driveResult.drive_file_id) {
-        dbService.updateBlogPost(updated.id, {
-          drive_file_id: driveResult.drive_file_id,
-          drive_modified_time: driveResult.drive_modified_time
-        }, 'DRIVE_EXPORT_SYNC');
-      }
-    }).catch(err => logger.error('[DRIVE_EXPORT_BACKGROUND_ERROR]', err));
+    let driveSync;
+    try {
+      driveSync = await exportLatestPostToDrive(updated.id);
+    } catch (driveError) {
+      logger.error('[DRIVE_EXPORT_ERROR] Content was saved locally, but export failed.', driveError, {
+        postId: updated.id
+      });
+      driveSync = { status: 'FAILED', code: 'DRIVE_EXPORT_FAILED' };
+    }
 
-    logger.info(`Blog post updated & synced to Drive: #${req.params.id} ("${title}")`);
-    res.json({ success: true, message: 'BLOG_POST_UPDATED' });
+    logger.info(`Blog post updated: #${req.params.id} ("${title}")`);
+    res.json({ success: true, message: 'BLOG_POST_UPDATED', drive_sync: driveSync });
   } catch (err) {
     logger.error('Failed to update blog post', err);
     res.status(500).json({ error: 'UPDATE_FAILED' });

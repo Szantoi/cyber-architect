@@ -8,12 +8,38 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { dbService } from '../services/dbService.js';
+import dotenv from 'dotenv';
+import { backupDatabase, resolveDatabasePath } from '../scripts/backupDatabase.js';
+import {
+  ADMIN_PIN_VIOLATION,
+  getAdminPinPolicyViolations
+} from '../security/pinPolicy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dbFilePath = path.join(__dirname, '../portfolio.db');
-const backupsDir = path.join(__dirname, '../backups');
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
+
+let dbService;
+
+const DATABASE_COMMANDS = new Set([
+  'stats',
+  'status',
+  'audit',
+  'settings',
+  'projects',
+  'project',
+  'skills',
+  'skill',
+  'blogs',
+  'blog',
+  'messages',
+  'inbox',
+  'mark-read',
+  'update-pin',
+  'set-pin',
+  'rollback',
+  'revert'
+]);
 
 const ANSI = {
   reset: '\x1b[0m',
@@ -122,9 +148,14 @@ async function main() {
     printBanner();
   }
 
+  if (DATABASE_COMMANDS.has(parsed.command)) {
+    ({ dbService } = await import('../services/dbService.js'));
+  }
+
   switch (parsed.command) {
     case 'stats':
     case 'status': {
+      const dbFilePath = resolveDatabasePath();
       const settings = dbService.getSettings();
       const skills = dbService.getSkills();
       const projects = dbService.getProjects();
@@ -432,21 +463,19 @@ async function main() {
 
     case 'backup':
     case 'snapshot': {
-      if (!fs.existsSync(backupsDir)) {
-        fs.mkdirSync(backupsDir, { recursive: true });
-      }
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupFileName = `portfolio_backup_${timestamp}.db`;
-      const targetPath = path.join(backupsDir, backupFileName);
-
-      fs.copyFileSync(dbFilePath, targetPath);
-      const sizeKb = (fs.statSync(targetPath).size / 1024).toFixed(2);
+      const result = backupDatabase();
 
       if (isJson) {
-        console.log(JSON.stringify({ success: true, file: targetPath, sizeKb }));
+        console.log(JSON.stringify({
+          success: true,
+          source: result.sourcePath,
+          file: result.path,
+          sizeKb: result.sizeKb
+        }));
       } else {
         console.log(`${ANSI.green}${ANSI.bold}✔ Adatbázis snapshot sikeresen elkészült!${ANSI.reset}`);
-        console.log(`  • Mentési útvonal: ${ANSI.cyan}${targetPath}${ANSI.reset} (${sizeKb} KB)\n`);
+        console.log(`  • Forrás:          ${ANSI.cyan}${result.sourcePath}${ANSI.reset}`);
+        console.log(`  • Mentési útvonal: ${ANSI.cyan}${result.path}${ANSI.reset} (${result.sizeKb} KB)\n`);
       }
       break;
     }
@@ -454,8 +483,19 @@ async function main() {
     case 'update-pin':
     case 'set-pin': {
       const newPin = parsed.positionals[0] || parsed.flags.pin;
-      if (!newPin || newPin.length < 4) {
-        console.error(`${ANSI.red}Hiba: Az új PIN kódnak legalább 4 karakteresnek kell lennie.${ANSI.reset}`);
+      const violations = getAdminPinPolicyViolations(newPin);
+      if (violations.length > 0) {
+        const reasons = [];
+        if (violations.includes(ADMIN_PIN_VIOLATION.REQUIRED)) {
+          reasons.push('az új PIN megadása kötelező');
+        }
+        if (violations.includes(ADMIN_PIN_VIOLATION.LENGTH)) {
+          reasons.push('12–64 karakter szükséges');
+        }
+        if (violations.includes(ADMIN_PIN_VIOLATION.PREDICTABLE)) {
+          reasons.push('gyakori, ismétlődő, sorozatos vagy placeholder érték nem használható');
+        }
+        console.error(`${ANSI.red}Hiba: A PIN nem felel meg a biztonsági szabályzatnak: ${reasons.join('; ')}.${ANSI.reset}`);
         process.exit(1);
       }
       dbService.updatePin(newPin, 'CLI_OPERATOR');

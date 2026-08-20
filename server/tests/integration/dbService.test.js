@@ -107,6 +107,80 @@ describe('dbService Database Integration Tests', () => {
     });
   });
 
+  describe('Content identity validation', () => {
+    it('generates canonical slugs and rejects unsafe source identity metadata', () => {
+      const basePost = {
+        title: 'Árvíztűrő tudástári dokumentum',
+        summary: 'Canonical content identity regression test.',
+        content: '# Biztonságos tartalom',
+        content_type: 'knowledge'
+      };
+
+      expect(() => dbService.createBlogPost({
+        ...basePost,
+        slug: '../../server/config/token'
+      }, 'TEST_AGENT')).toThrow('INVALID_SLUG');
+      expect(() => dbService.createBlogPost({
+        ...basePost,
+        content_type: 'article'
+      }, 'TEST_AGENT')).toThrow('INVALID_CONTENT_TYPE');
+
+      const created = dbService.createBlogPost(basePost, 'TEST_AGENT');
+      try {
+        expect(created.slug).toMatch(/^arvizturo-tudastari-dokumentum-[a-z0-9]{5}$/);
+        expect(created.content_type).toBe('knowledge');
+
+        expect(() => dbService.updateBlogPost(created.id, {
+          slug: '../escape'
+        }, 'TEST_AGENT')).toThrow('INVALID_SLUG');
+        expect(() => dbService.updateBlogPost(created.id, {
+          content_type: 'page'
+        }, 'TEST_AGENT')).toThrow('INVALID_CONTENT_TYPE');
+        expect(dbService.getBlogPostById(created.id)).toMatchObject({
+          slug: created.slug,
+          content_type: 'knowledge'
+        });
+      } finally {
+        dbService.deleteBlogPost(created.id, 'TEST_CLEANUP');
+      }
+    });
+
+    it('enforces non-empty Drive source identity uniqueness in SQLite', () => {
+      const uniqueMarker = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const driveFileId = `gdrive_${uniqueMarker}`;
+      const first = dbService.createBlogPost({
+        slug: `drive-source-first-${uniqueMarker}`,
+        title: 'First Drive source owner',
+        summary: 'The source ID belongs to exactly one row.',
+        content: '# First source owner',
+        drive_file_id: driveFileId
+      }, 'TEST_AGENT');
+
+      try {
+        expect(() => dbService.createBlogPost({
+          slug: `drive-source-second-${uniqueMarker}`,
+          title: 'Duplicate Drive source owner',
+          summary: 'This insert must fail at the database boundary.',
+          content: '# Duplicate source owner',
+          drive_file_id: `  ${driveFileId}  `
+        }, 'TEST_AGENT')).toThrow(/UNIQUE constraint failed/);
+        expect(dbService.getBlogPostByDriveFileId(driveFileId)).toMatchObject({ id: first.id });
+      } finally {
+        dbService.deleteBlogPost(first.id, 'TEST_CLEANUP');
+      }
+    });
+  });
+
+  describe('Central admin PIN policy', () => {
+    it.each(['1234', 'aaaaaaaaaaaa', 'replace_with_a_pin'])(
+      'rejects weak PIN rotation through dbService: %s',
+      (weakPin) => {
+        expect(() => dbService.updatePin(weakPin, 'TEST_AGENT'))
+          .toThrow('PIN_POLICY_VIOLATION');
+      }
+    );
+  });
+
   describe('Agent Messaging & Audit Trail', () => {
     let testMsgId = null;
 

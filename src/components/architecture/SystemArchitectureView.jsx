@@ -34,22 +34,23 @@ const PIPELINE_STEPS = [
   {
     id: 'step-1',
     stepNumber: '01',
-    title: 'Kétirányú Google Drive Szinkronizáció',
-    subtitle: 'Google Service Account & Frontmatter Parser',
+    title: 'Ellenőrzött Google Drive Import',
+    subtitle: 'Pull-only alapértelmezés & Admin Dry-run',
     icon: FolderOpen,
     color: 'text-neonCyan',
     borderColor: 'border-neonCyan',
     glowColor: 'shadow-[0_0_15px_rgba(0,255,255,0.2)]',
-    description: 'A rendszer a háttérben biztonságos Google Drive Service Account API-n keresztül szinkronizálja a mérnöki cikkeket és műszaki rajzokat. A YAML frontmatter fejlécből automatikusan kinyeri a kategóriákat, metaadatokat, iparági és technológiai címkéket.',
-    techBadges: ['Google Drive API v3', 'Service Account JWT', 'YAML Frontmatter', 'SHA-256 Hash'],
-    codeSnippet: `// 1. Automatizált Kétirányú Drive Szinkronizáció
-const syncDriveFolder = async (folderId) => {
-  const files = await drive.files.list({
-    q: \`'\${folderId}' in parents and mimeType = 'text/markdown'\`,
-    fields: 'files(id, name, md5Checksum, modifiedTime)'
-  });
-  return parseMarkdownFrontmatter(files);
-};`
+    description: 'A Google Drive importot az adminisztrátor indítja, és az alapértelmezett irány kizárólag Drive → SQLite (pull-only). Alkalmazás előtt külön, írásmentes dry-run előnézet kérhető: a rendszer lapozva feltárja a fájlokat, Drive file ID alapján azonosítja a forrásokat, validálja a YAML frontmattert, majd külön jelzi az ütközéseket és feldolgozási hibákat.',
+    techBadges: ['Pull-only Default', 'Manual Admin Trigger', 'Drive File ID', 'Dry-run Collision Report'],
+    codeSnippet: `// 1. Admin által indított, ellenőrzött Drive import
+const preview = await api.post('/admin/drive/sync', {
+  dry_run: true
+});
+
+// A külön alkalmazási kérés is kizárólag Drive → SQLite irányú.
+const result = await api.post('/admin/drive/sync', {
+  dry_run: false
+});`
   },
   {
     id: 'step-2',
@@ -176,7 +177,7 @@ const SystemArchitectureView = () => {
           </h1>
 
           <p className="font-body dark:text-slate-300 text-slate-700 text-sm md:text-base max-w-3xl leading-relaxed">
-            Ez a technikai leírás részletesen bemutatja a platform <strong>belső rétegződését, biztonsági architektúráját és adatfolyamát</strong>. A Google Drive titkosított szinkronizációjától a helyi vektoros keresőmotoron és kaszkádolt taxonómián át a kétlépcsős (2FA) védvonalig.
+            Ez a technikai leírás részletesen bemutatja a platform <strong>belső rétegződését, biztonsági architektúráját és adatfolyamát</strong>. Az adminisztrátor által indított, pull-only Google Drive importtól a helyi vektoros keresőmotoron és kaszkádolt taxonómián át a kétlépcsős (2FA) védvonalig.
           </p>
 
           <div className="flex flex-wrap gap-4 mt-6 pt-6 border-t dark:border-white/10 border-slate-200 text-xs">
@@ -285,9 +286,9 @@ const SystemArchitectureView = () => {
                       <span>GARANTÁLT RENDSZER-TULAJDONSÁGOK:</span>
                     </div>
                     <ul className="list-disc list-inside text-[11px] text-slate-600 dark:text-slate-400 space-y-1 font-mono">
-                      <li>Nulla felhős adatszivárgás (Zero Cloud Data Leakage)</li>
+                      <li>Írásmentes dry-run előnézet az import alkalmazása előtt</li>
                       <li>Determinisztikus, SQL injection-mentes prepared query-k</li>
-                      <li>Kétlépcsős integritás-ellenőrzés SHA-256 lenyomattal</li>
+                      <li>Drive file ID alapú forrásazonosság és ütközésriport</li>
                     </ul>
                   </div>
                 </div>
@@ -379,7 +380,7 @@ const SystemArchitectureView = () => {
                 <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-white/10">SQLite WAL</span>
                 <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-white/10">FTS5 BM25</span>
                 <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-white/10">Zero Raw Query</span>
-                <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-white/10">SHA-256 Sync</span>
+                <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-white/10">Drive File ID</span>
               </div>
             </div>
           </div>

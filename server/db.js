@@ -271,11 +271,26 @@ export function initDatabase() {
 
 
   // Create blog_posts indexes after migration
+  const duplicateDriveSource = db.prepare(`
+    SELECT TRIM(drive_file_id) AS normalized_drive_file_id, COUNT(*) AS duplicate_count
+    FROM blog_posts
+    WHERE TRIM(COALESCE(drive_file_id, '')) <> ''
+    GROUP BY TRIM(drive_file_id)
+    HAVING COUNT(*) > 1
+    LIMIT 1
+  `).get();
+  if (duplicateDriveSource) {
+    throw new Error('[DB_INTEGRITY] Duplicate non-empty drive_file_id values must be reconciled before startup.');
+  }
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_blog_posts_content_type ON blog_posts(content_type);
     CREATE INDEX IF NOT EXISTS idx_blog_posts_project ON blog_posts(project_id);
     CREATE INDEX IF NOT EXISTS idx_blog_posts_visibility ON blog_posts(visibility);
     CREATE INDEX IF NOT EXISTS idx_blog_posts_published ON blog_posts(published);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_blog_posts_drive_file_id_unique
+      ON blog_posts(TRIM(drive_file_id))
+      WHERE TRIM(COALESCE(drive_file_id, '')) <> '';
   `);
 
   // 6. SQLite FTS5 Full-Text Search Virtual Table

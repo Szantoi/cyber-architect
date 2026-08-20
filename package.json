@@ -20,6 +20,7 @@
     "test:coverage": "vitest run --coverage",
     "test:bundle-budget": "node server/scripts/verifyBundleBudget.js",
     "test:production-smoke": "node server/scripts/verifyProductionServer.js",
+    "db:migrate-legacy": "node server/scripts/migrateLegacyDatabase.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "preview": "vite preview",

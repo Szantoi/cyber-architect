@@ -4,6 +4,13 @@ import { logger } from '../logger.js';
 
 export const knowledgeRouter = Router();
 
+const isPublishedPublicKnowledgeDoc = post => Boolean(
+  post
+  && post.content_type === 'knowledge'
+  && post.visibility === 'public'
+  && Number(post.published) === 1
+);
+
 // 1. Unified Multi-Corpus RAG Search (Global Scope: all | blog | knowledge)
 knowledgeRouter.get('/search/unified', (req, res) => {
   try {
@@ -67,8 +74,8 @@ knowledgeRouter.get('/knowledge/dimensions', (req, res) => {
 // 5. Docs / Knowledge Base List
 knowledgeRouter.get('/docs', (req, res) => {
   try {
-    const posts = dbService.getKnowledgeDocs({ visibility: 'public' });
-    const docs = posts.map(p => ({
+    const posts = dbService.getKnowledgeDocs({ publishedOnly: true, visibility: 'public' });
+    const docs = posts.filter(isPublishedPublicKnowledgeDoc).map(p => ({
       id: p.id,
       slug: p.slug,
       title: p.title,
@@ -232,9 +239,12 @@ knowledgeRouter.get('/docs/related/:slug', (req, res) => {
 knowledgeRouter.get('/docs/:slug', (req, res) => {
   try {
     const { slug } = req.params;
-    const post = dbService.getBlogPostBySlug(slug);
+    const post = dbService.getBlogPostBySlug(slug, {
+      publishedOnly: true,
+      visibility: 'public'
+    });
 
-    if (!post || post.visibility === 'private') {
+    if (!isPublishedPublicKnowledgeDoc(post)) {
       return res.status(404).json({ error: 'DOC_NOT_FOUND', content: '# HIBA 404\n\nA kért dokumentum nem található a publikus tudástárban.' });
     }
 

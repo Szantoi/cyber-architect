@@ -213,13 +213,20 @@ const AdminDashboard = () => {
         method,
         body: JSON.stringify(editingBlog)
       });
+      const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
-        showNotify(isNew ? 'DOKUMENTUM_LÉTREHOZVA' : 'DOKUMENTUM_FRISSÍTVE');
+        if (data.drive_sync?.status === 'FAILED') {
+          showNotify('DOKUMENTUM_ELMENTVE // DRIVE_EXPORT_SIKERTELEN', true);
+        } else if (data.drive_sync?.status === 'PARTIAL') {
+          showNotify('DOKUMENTUM_ELMENTVE // DRIVE_EXPORT_RÉSZLEGES', true);
+        } else {
+          showNotify(isNew ? 'DOKUMENTUM_LÉTREHOZVA' : 'DOKUMENTUM_FRISSÍTVE');
+        }
         setEditingBlog(null);
         loadAdminData();
       } else {
-        showNotify('SAVE_FAILED', true);
+        showNotify(data.error || 'SAVE_FAILED', true);
       }
     } catch {
       showNotify('NETWORK_ERROR', true);
@@ -241,23 +248,115 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleDriveSync = async () => {
+  const handleDriveSync = async (dryRun = false) => {
     setIsSyncing(true);
     setSyncResult(null);
     try {
-      const res = await adminFetch('/api/admin/drive/sync', { method: 'POST' });
+      const res = await adminFetch('/api/admin/drive/sync', {
+        method: 'POST',
+        body: JSON.stringify({
+          dry_run: dryRun,
+          ...(!dryRun && { confirm: 'APPLY_DRIVE_PULL_TO_DATABASE' })
+        })
+      });
       const data = await res.json();
       const report = data.report || data;
-      if (res.ok && (data.success || report.synced !== undefined)) {
-        setSyncResult(report);
-        showNotify(`DRIVE_SZINKRONIZÁCIÓ_SIKERES: ${report.synced || 0} fájl (${report.created || 0} új, ${report.updated || 0} frissítve)`);
-        loadAdminData();
+      const processed = report.processed ?? report.synced ?? 0;
+      const errorCount = Array.isArray(report.errors) ? report.errors.length : 0;
+      const collisionCount = Array.isArray(report.collisions) ? report.collisions.length : (report.collisions || 0);
+
+      if (res.ok && report && typeof report === 'object') {
+        setSyncResult({ ...report, dry_run: data.dry_run ?? dryRun });
+        if (data.partial || errorCount > 0) {
+          showNotify(`DRIVE_SZINKRON_RÉSZLEGES: ${processed} feldolgozva, ${errorCount} hiba, ${collisionCount} ütközés`, true);
+        } else if (dryRun) {
+          showNotify(`DRIVE_ELŐNÉZET_KÉSZ: ${processed} fájl, adatbázis- és Drive-írás nélkül`);
+        } else {
+          showNotify(`DRIVE_PULL_SIKERES: ${processed} fájl (${report.created || 0} új, ${report.updated || 0} frissítve, ${collisionCount} átnevezve)`);
+        }
+        if (!dryRun) loadAdminData();
       } else {
+        if (report && typeof report === 'object' && (report.errors || report.files)) {
+          setSyncResult(report);
+        }
         showNotify(`SZINKRONIZÁCIÓS_HIBA: ${data.error || data.message || 'Ismeretlen hiba'}`, true);
-        if (data.details) setSyncResult({ errors: [{ file: 'Auth', error: data.details }] });
+        if (data.details && !report.errors) setSyncResult({ errors: [{ file: 'Auth', error: data.details }] });
       }
     } catch {
       showNotify('HÁLÓZATI_HIBA_A_SZINKRONIZÁLÁSKOR', true);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleEmptyDriveRepair = async (dryRun = true) => {
+    if (!dryRun && !window.confirm(
+      'A művelet kizárólag a Drive-on jelenleg üres Markdown-fájlokat tölti fel a pontos helyi párjukkal. Folytatod?'
+    )) return;
+
+    setIsSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await adminFetch('/api/admin/drive/repair-empty', {
+        method: 'POST',
+        body: JSON.stringify({
+          dry_run: dryRun,
+          ...(!dryRun && { confirm: 'REPAIR_EMPTY_DRIVE_FILES' })
+        })
+      });
+      const data = await res.json();
+      const report = data.report || data;
+      const wouldRepair = report.would_repair ?? report.wouldRepair ?? 0;
+      const repaired = report.repaired ?? 0;
+      const errorCount = Array.isArray(report.errors) ? report.errors.length : 0;
+
+      if (res.ok && report && typeof report === 'object') {
+        setSyncResult({
+          ...report,
+          dry_run: data.dry_run ?? dryRun,
+          operation: 'EMPTY_DRIVE_REPAIR'
+        });
+        if (data.partial || errorCount > 0) {
+          showNotify(`ÜRES_DRIVE_JAVÍTÁS_RÉSZLEGES: ${wouldRepair + repaired} párosítás, ${errorCount} hiba`, true);
+        } else if (dryRun) {
+          showNotify(`ÜRES_DRIVE_ELŐNÉZET_KÉSZ: ${wouldRepair} biztonságosan javítható fájl`);
+        } else {
+          showNotify(`ÜRES_DRIVE_FÁJLOK_JAVÍTVA: ${repaired} fájl; ezután futtasd a Drive → DB alkalmazást`);
+        }
+      } else {
+        if (report && typeof report === 'object') setSyncResult(report);
+        showNotify(`DRIVE_JAVÍTÁSI_HIBA: ${data.error || data.message || 'Ismeretlen hiba'}`, true);
+      }
+    } catch {
+      showNotify('HÁLÓZATI_HIBA_A_DRIVE_JAVÍTÁSKOR', true);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDriveReconnect = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await adminFetch('/api/admin/drive/auth-url');
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || data.message || `HTTP_${res.status || 'ERROR'}`);
+      }
+
+      const authUrl = [data.auth_url, data.authUrl]
+        .find(value => typeof value === 'string' && value.trim());
+
+      if (!authUrl) {
+        throw new Error('HIÁNYZÓ_GOOGLE_DRIVE_AUTH_URL');
+      }
+
+      window.location.assign(authUrl.trim());
+    } catch (error) {
+      showNotify(
+        `GOOGLE_DRIVE_ÚJRACSATLAKOZTATÁSI_HIBA: ${error?.message || 'HÁLÓZATI_HIBA'}`,
+        true
+      );
     } finally {
       setIsSyncing(false);
     }
@@ -539,6 +638,8 @@ const AdminDashboard = () => {
             showMarkdownCheatSheet={showMarkdownCheatSheet}
             setShowMarkdownCheatSheet={setShowMarkdownCheatSheet}
             onDriveSync={handleDriveSync}
+            onEmptyDriveRepair={handleEmptyDriveRepair}
+            onDriveReconnect={handleDriveReconnect}
             isSyncing={isSyncing}
             syncResult={syncResult}
             setSyncResult={setSyncResult}

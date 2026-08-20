@@ -11,11 +11,30 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - SQLITE_DB_PATH=/app/data/portfolio.sqlite
+      - SITE_URL=${SITE_URL:-https://www.ai.szantoi.hu}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://www.ai.szantoi.hu,https://ai.szantoi.hu,https://szantoi.hu,https://www.szantoi.hu}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a random value of at least 32 characters}
       - ADMIN_DEFAULT_PIN=${ADMIN_DEFAULT_PIN:?ADMIN_DEFAULT_PIN must be set to a strong value of at least 12 characters}
+      - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID:-}
+      - DRIVE_KNOWLEDGE_FOLDER_ID=${DRIVE_KNOWLEDGE_FOLDER_ID:-}
+      - DRIVE_BLOG_FOLDER_ID=${DRIVE_BLOG_FOLDER_ID:-}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - GOOGLE_OAUTH_CLIENT_PATH=${GOOGLE_OAUTH_CLIENT_PATH:-}
+      - GOOGLE_OAUTH_TOKENS_PATH=${GOOGLE_OAUTH_TOKENS_PATH:-/app/data/drive-tokens.json}
+      - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI:-}
+      # Writable local Markdown mirror. It lives on the persistent data volume;
+      # optionally bind-mount an existing CyberArchitect directory here.
+      - CYBER_ARCHITECT_CONTENT_ROOT=${CYBER_ARCHITECT_CONTENT_ROOT:-/app/data/content}
+      # For Drive API access, mount the credential through a private override:
+      # GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/google-drive.json
     volumes:
       # Persistent SQLite WAL database and backup storage
       - portfolio_data:/app/data
+      # Optional canonical Markdown mirror instead of the volume directory:
+      # - ../CyberArchitect:/app/data/content
+      # Do not copy credentials into the image. Example override:
+      # - ./secrets/google-drive.json:/run/secrets/google-drive.json:ro
+      # - ./secrets/google-oauth-client.json:/run/secrets/google-oauth-client.json:ro
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/api/health/ready').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
       interval: 30s

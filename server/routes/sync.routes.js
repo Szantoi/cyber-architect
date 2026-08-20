@@ -5,9 +5,34 @@ import { authMiddleware } from '../security/auth.js';
 import { driveSyncService } from '../services/driveSyncService.js';
 
 export const syncRouter = Router();
+const DRIVE_PULL_CONFIRMATION = 'APPLY_DRIVE_PULL_TO_DATABASE';
+let activeDriveMutation = null;
+
+async function runExclusiveDriveMutation(operation, callback) {
+  if (activeDriveMutation) {
+    const error = new Error('Another Drive mutation is already in progress.');
+    error.code = 'DRIVE_OPERATION_IN_PROGRESS';
+    error.activeOperation = activeDriveMutation;
+    throw error;
+  }
+
+  activeDriveMutation = operation;
+  try {
+    return await callback();
+  } finally {
+    activeDriveMutation = null;
+  }
+}
 
 function getSingleQueryValue(value) {
   return typeof value === 'string' ? value : null;
+}
+
+function parseBooleanFlag(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  throw new TypeError('INVALID_BOOLEAN_FLAG');
 }
 
 function normalizeHttpOrigin(value) {
@@ -177,17 +202,133 @@ syncRouter.get('/admin/drive/oauth2callback', async (req, res) => {
 
 // 4. Trigger Drive Sync (Aliases: /admin/drive/sync, /sync/drive, /sync/drive/sync, /drive/sync)
 const postSyncHandler = async (req, res) => {
+  let dryRun;
   try {
-    logger.info('[DRIVE_SYNC] Synchronization requested via Admin API');
-    const results = await driveSyncService.syncAll('ADMIN_DASHBOARD', { pushFirst: true });
-    logger.success(`[DRIVE_SYNC] Complete: ${results.synced} files synced (${results.created} new, ${results.updated} updated)`);
-    res.json({ success: true, report: results, ...results });
+    dryRun = parseBooleanFlag(req.body?.dry_run ?? req.query?.dry_run, true);
+  } catch {
+    return res.status(400).json({
+      error: 'INVALID_SYNC_REQUEST',
+      message: 'dry_run must be a boolean value.'
+    });
+  }
+
+  if (!dryRun && req.body?.confirm !== DRIVE_PULL_CONFIRMATION) {
+    return res.status(400).json({
+      error: 'DRIVE_SYNC_CONFIRMATION_REQUIRED',
+      message: `confirm must equal ${DRIVE_PULL_CONFIRMATION}.`
+    });
+  }
+
+  try {
+    logger.info(`[DRIVE_SYNC] ${dryRun ? 'Preview' : 'Pull'} requested via Admin API`);
+    const reconcile = () => driveSyncService.syncAll('ADMIN_DASHBOARD', {
+      dryRun,
+      // A normal reconciliation request must never overwrite Drive content.
+      pushFirst: false
+    });
+    const results = dryRun
+      ? await reconcile()
+      : await runExclusiveDriveMutation('DRIVE_PULL_TO_DATABASE', reconcile);
+    const errors = Array.isArray(results.errors) ? results.errors : [];
+    const processed = results.processed ?? results.synced ?? 0;
+    const completeFailure = errors.length > 0 && processed === 0;
+    const partial = errors.length > 0 && processed > 0;
+
+    if (completeFailure) {
+      logger.error('[DRIVE_SYNC] Reconciliation failed before any document was processed.', {
+        errorCount: errors.length,
+        dryRun
+      });
+    } else if (partial) {
+      logger.warn('[DRIVE_SYNC] Reconciliation completed with partial errors.', {
+        processed,
+        errorCount: errors.length,
+        dryRun
+      });
+    } else {
+      logger.success(`[DRIVE_SYNC] Complete: ${processed} files processed (${results.created || 0} new, ${results.updated || 0} updated)`);
+    }
+
+    return res.status(completeFailure ? 502 : 200).json({
+      ...results,
+      success: errors.length === 0,
+      partial,
+      dry_run: dryRun,
+      report: results
+    });
   } catch (err) {
+    if (err.code === 'DRIVE_OPERATION_IN_PROGRESS') {
+      return res.status(409).json({
+        error: err.code,
+        active_operation: err.activeOperation
+      });
+    }
     logger.error('Drive sync failed', err);
-    res.status(500).json({ error: 'DRIVE_SYNC_FAILED', message: err.message });
+    return res.status(500).json({ error: 'DRIVE_SYNC_FAILED', message: err.message });
   }
 };
 syncRouter.post('/admin/drive/sync', authMiddleware, postSyncHandler);
 syncRouter.post('/sync/drive', authMiddleware, postSyncHandler);
 syncRouter.post('/sync/drive/sync', authMiddleware, postSyncHandler);
 syncRouter.post('/drive/sync', authMiddleware, postSyncHandler);
+
+const EMPTY_DRIVE_REPAIR_CONFIRMATION = 'REPAIR_EMPTY_DRIVE_FILES';
+
+// 5. Repair only existing, empty Drive Markdown files from their exact local counterpart.
+// Preview is the safe default. Apply requires an explicit confirmation phrase and the
+// service revalidates every remote file immediately before writing it.
+const postEmptyDriveRepairHandler = async (req, res) => {
+  let dryRun;
+  try {
+    dryRun = parseBooleanFlag(req.body?.dry_run ?? req.query?.dry_run, true);
+  } catch {
+    return res.status(400).json({
+      error: 'INVALID_REPAIR_REQUEST',
+      message: 'dry_run must be a boolean value.'
+    });
+  }
+
+  if (!dryRun && req.body?.confirm !== EMPTY_DRIVE_REPAIR_CONFIRMATION) {
+    return res.status(400).json({
+      error: 'DRIVE_REPAIR_CONFIRMATION_REQUIRED',
+      message: `confirm must equal ${EMPTY_DRIVE_REPAIR_CONFIRMATION}.`
+    });
+  }
+
+  try {
+    logger.info(`[DRIVE_REPAIR] ${dryRun ? 'Preview' : 'Apply'} requested via Admin API`);
+    const repair = () => driveSyncService.repairEmptyCloudFilesFromLocal({ dryRun });
+    const results = dryRun
+      ? await repair()
+      : await runExclusiveDriveMutation('REPAIR_EMPTY_DRIVE_FILES', repair);
+    const errors = Array.isArray(results.errors) ? results.errors : [];
+    const repaired = results.repaired ?? 0;
+    const wouldRepair = results.would_repair ?? results.wouldRepair ?? 0;
+    const successful = dryRun ? wouldRepair : repaired;
+    const completeFailure = errors.length > 0 && successful === 0;
+    const partial = errors.length > 0 && successful > 0;
+
+    return res.status(completeFailure ? 502 : 200).json({
+      ...results,
+      success: errors.length === 0,
+      partial,
+      dry_run: dryRun,
+      operation: 'EMPTY_DRIVE_REPAIR',
+      report: results
+    });
+  } catch (err) {
+    if (err.code === 'DRIVE_OPERATION_IN_PROGRESS') {
+      return res.status(409).json({
+        error: err.code,
+        active_operation: err.activeOperation
+      });
+    }
+    logger.error('Empty Drive file repair failed', err);
+    return res.status(500).json({
+      error: 'DRIVE_EMPTY_FILE_REPAIR_FAILED',
+      message: err.message
+    });
+  }
+};
+
+syncRouter.post('/admin/drive/repair-empty', authMiddleware, postEmptyDriveRepairHandler);
