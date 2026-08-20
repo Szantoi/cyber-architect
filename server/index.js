@@ -6,8 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { logger } from './logger.js';
+import { db } from './db.js';
 import { dbService } from './services/dbService.js';
 import { dbMaintenance } from './services/dbMaintenance.js';
+import { sseService } from './services/sseService.js';
+import { registerServerLifecycle } from './services/serverLifecycle.js';
 import { apiLimiter } from './security/rateLimiter.js';
 import { validateEnv } from './config/envValidator.js';
 import { notFoundHandler, globalErrorHandler } from './middleware/errorHandler.js';
@@ -147,7 +150,15 @@ const isDirectExecution = Boolean(process.argv[1])
 
 if (process.env.NODE_ENV !== 'test' && isDirectExecution) {
   dbMaintenance.startPeriodicMaintenance();
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     logger.success(`[CYBER_CORE_SERVER] Backend API running on port ${PORT} [${config.nodeEnv.toUpperCase()}]`);
+  });
+
+  registerServerLifecycle({
+    server,
+    database: db,
+    maintenance: dbMaintenance,
+    eventStream: sseService,
+    log: logger
   });
 }

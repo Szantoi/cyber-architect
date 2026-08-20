@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
 
 /**
  * ============================================================================
@@ -15,6 +16,7 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'blog' | 'knowledge'
+  const modalRef = useModalFocusTrap(isOpen, onClose);
 
   useEffect(() => {
     if (!isOpen || !searchQuery) return;
@@ -40,20 +42,16 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
     fetchEvidence();
   }, [isOpen, searchQuery]);
 
-  // Escape key handler
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
-    }
+    if (!isOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = previousOverflow;
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -63,15 +61,6 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
   const filteredResults = activeFilter === 'all' 
     ? results 
     : (activeFilter === 'blog' ? blogResults : knowledgeResults);
-
-  const handleOpenDoc = (item) => {
-    onClose();
-    if (item.type === 'blog' || item.content_type === 'blog') {
-      navigate(`/blog/${item.slug}`);
-    } else {
-      navigate(`/knowledge/${item.slug}`);
-    }
-  };
 
   const handleNavigateFullSearch = (targetType) => {
     onClose();
@@ -93,6 +82,10 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
 
         {/* Modal Window Container */}
         <motion.div 
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rag-evidence-dialog-title"
           initial={{ opacity: 0, scale: 0.96, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 15 }}
@@ -112,7 +105,9 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
               </span>
             </div>
             <button
+              type="button"
               onClick={onClose}
+              aria-label="RAG találatok bezárása"
               className="shrink-0 font-mono text-[10px] sm:text-xs text-slate-400 hover:text-neonMagenta border border-transparent hover:border-neonMagenta px-2 py-0.5 transition-colors uppercase font-bold cursor-pointer"
               title="Bezárás (ESC)"
             >
@@ -127,7 +122,7 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
                 <span className="block max-w-full break-words text-[9px] sm:text-[10px] font-mono text-neonMagenta font-black uppercase tracking-[0.1em] sm:tracking-[0.2em] mb-1">
                   KAPCSOLÓDÓ TÉMAKÖR & SZAKMAI ÁLLÍTÁSOK
                 </span>
-                <h2 className="break-words text-2xl font-headline font-black uppercase text-white tracking-tight">
+                <h2 id="rag-evidence-dialog-title" className="break-words text-2xl font-headline font-black uppercase text-white tracking-tight">
                   {topicTitle}
                 </h2>
               </div>
@@ -140,7 +135,9 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
             {/* Filter Tabs */}
             <div className="flex flex-wrap items-center gap-2 mt-5 font-mono text-[10px] sm:text-xs">
               <button
+                type="button"
                 onClick={() => setActiveFilter('all')}
+                aria-pressed={activeFilter === 'all'}
                 className={`px-3 py-1 text-xs font-bold uppercase transition-all rounded-none cursor-pointer ${
                   activeFilter === 'all'
                     ? 'bg-neonCyan text-black border-2 border-neonCyan font-black'
@@ -150,7 +147,9 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
                 ÖSSZES TALÁLAT ({results.length})
               </button>
               <button
+                type="button"
                 onClick={() => setActiveFilter('blog')}
+                aria-pressed={activeFilter === 'blog'}
                 className={`px-3 py-1 text-xs font-bold uppercase transition-all rounded-none cursor-pointer flex items-center gap-1.5 ${
                   activeFilter === 'blog'
                     ? 'bg-neonMagenta text-black border-2 border-neonMagenta font-black'
@@ -160,7 +159,9 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
                 <span>📰 BLOG ESETTANULMÁNYOK ({blogResults.length})</span>
               </button>
               <button
+                type="button"
                 onClick={() => setActiveFilter('knowledge')}
+                aria-pressed={activeFilter === 'knowledge'}
                 className={`px-3 py-1 text-xs font-bold uppercase transition-all rounded-none cursor-pointer flex items-center gap-1.5 ${
                   activeFilter === 'knowledge'
                     ? 'bg-plasmaGreen text-black border-2 border-plasmaGreen font-black'
@@ -175,7 +176,7 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
           {/* Results Scrollable Body */}
           <div className="p-6 overflow-y-auto flex-1 space-y-4 max-h-[50vh]">
             {loading ? (
-              <div className="py-16 text-center font-mono">
+              <div role="status" aria-live="polite" className="py-16 text-center font-mono">
                 <div className="inline-block w-8 h-8 border-2 border-neonCyan border-t-transparent animate-spin mb-4"></div>
                 <p className="text-xs text-neonCyan tracking-widest animate-pulse">
                   RAG VEKTOROS ÉS FULL-TEXT KERESÉS FOLYAMATBAN...
@@ -193,10 +194,11 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
                 const scorePct = item.relevanceScore || Math.min(99, Math.round((item.score || 0.85) * 100));
 
                 return (
-                  <div
+                  <Link
                     key={item.id || item.slug || idx}
-                    className="p-4 bg-black/60 border border-white/10 hover:border-neonCyan transition-all group relative cursor-pointer"
-                    onClick={() => handleOpenDoc(item)}
+                    to={(isBlog ? '/blog/' : '/knowledge/') + item.slug}
+                    className="block p-4 bg-black/60 border border-white/10 hover:border-neonCyan transition-all group relative cursor-pointer"
+                    onClick={onClose}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -234,7 +236,7 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
                         DOKUMENTUM MEGNYITÁSA ➔
                       </span>
                     </div>
-                  </div>
+                  </Link>
                 );
               })
             )}
@@ -247,12 +249,14 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
             </span>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
+                type="button"
                 onClick={() => handleNavigateFullSearch('blog')}
                 className="flex-1 sm:flex-initial px-3 py-2 bg-black border border-neonMagenta text-neonMagenta hover:bg-neonMagenta hover:text-black font-bold uppercase transition-all text-center cursor-pointer"
               >
                 📰 BLOG KERESŐ MEGNYITÁSA
               </button>
               <button
+                type="button"
                 onClick={() => handleNavigateFullSearch('knowledge')}
                 className="flex-1 sm:flex-initial px-3 py-2 bg-neonCyan text-black font-black uppercase border border-neonCyan hover:bg-black hover:text-neonCyan transition-all text-center cursor-pointer"
               >

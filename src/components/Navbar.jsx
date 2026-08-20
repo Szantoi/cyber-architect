@@ -1,131 +1,70 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import ThemeToggle from './ThemeToggle';
 
-// 6 Tactical Items for Radial Arc Menu
-const FAN_MENU_BASE = [
+const MORE_MENU_ITEMS = [
   {
     id: 'mcp',
     label: 'MCP UPLINK',
+    description: 'AI ágensek csatlakozási átjárója',
     to: '/mcp',
     icon: 'hub',
-    textColor: 'dark:text-neonCyan text-cyan-800',
-    borderColor: 'dark:border-neonCyan border-slate-900',
-    glow: 'dark:shadow-[0_0_12px_rgba(0,255,255,0.5)] shadow-[3px_3px_0_#0f172a]',
-    angleDeg: 6 // Degrees from vertical (straight up)
+    accent: 'dark:text-neonCyan text-cyan-800 dark:border-neonCyan/60 border-cyan-800'
   },
   {
     id: 'method',
     label: 'MÓDSZERTAN',
+    description: 'Diagnosztika és tervezés',
     hash: '#diagnostics',
     icon: 'insights',
-    textColor: 'dark:text-yellow-400 text-amber-700',
-    borderColor: 'dark:border-yellow-400/80 border-slate-900',
-    glow: 'dark:shadow-[0_0_12px_rgba(250,204,21,0.4)] shadow-[3px_3px_0_#0f172a]',
-    angleDeg: 23
+    accent: 'dark:text-yellow-400 text-amber-800 dark:border-yellow-400/60 border-amber-800'
   },
   {
     id: 'arsenal',
     label: 'ESZKÖZTÁR',
+    description: 'Stack és szakmai eszközök',
     hash: '#arsenal',
     icon: 'terminal',
-    textColor: 'dark:text-neonMagenta text-fuchsia-800',
-    borderColor: 'dark:border-neonMagenta/80 border-slate-900',
-    glow: 'dark:shadow-[0_0_12px_rgba(255,0,255,0.4)] shadow-[3px_3px_0_#0f172a]',
-    angleDeg: 40
+    accent: 'dark:text-neonMagenta text-fuchsia-800 dark:border-neonMagenta/60 border-fuchsia-800'
   },
   {
     id: 'arch',
     label: 'ARCHITEKTÚRA',
+    description: 'Rendszerterv és RAG specifikáció',
     to: '/architecture',
     icon: 'account_tree',
-    textColor: 'dark:text-cyan-400 text-cyan-800',
-    borderColor: 'dark:border-cyan-400/80 border-slate-900',
-    glow: 'dark:shadow-[0_0_12px_rgba(34,211,238,0.4)] shadow-[3px_3px_0_#0f172a]',
-    angleDeg: 57
+    accent: 'dark:text-cyan-400 text-cyan-800 dark:border-cyan-400/60 border-cyan-800'
   },
   {
     id: 'contact',
     label: 'KAPCSOLAT',
+    description: 'Közvetlen üzenetküldés',
     hash: '#uplink',
     icon: 'send',
-    textColor: 'dark:text-plasmaGreen text-emerald-800',
-    borderColor: 'dark:border-plasmaGreen/80 border-slate-900',
-    glow: 'dark:shadow-[0_0_12px_rgba(128,255,0,0.4)] shadow-[3px_3px_0_#0f172a]',
-    angleDeg: 74
+    accent: 'dark:text-plasmaGreen text-emerald-800 dark:border-plasmaGreen/60 border-emerald-800'
   },
   {
     id: 'admin',
     label: 'ADMIN',
+    description: 'Overseer vezérlőpult',
     to: '/admin',
     icon: 'lock',
-    textColor: 'dark:text-slate-300 text-slate-700',
-    borderColor: 'dark:border-slate-400/80 border-slate-900',
-    glow: 'dark:shadow-[0_0_10px_rgba(203,213,225,0.3)] shadow-[3px_3px_0_#0f172a]',
-    angleDeg: 90
+    accent: 'dark:text-slate-200 text-slate-700 dark:border-slate-300/60 border-slate-700'
   }
 ];
+
+const preferredScrollBehavior = () => (
+  typeof window !== 'undefined'
+  && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 'auto'
+    : 'smooth'
+);
 
 const Navbar = () => {
   const location = useLocation();
   const isHome = location.pathname === '/';
-
-  // Handedness: 'right' (default) vs 'left' (balkezes)
-  const [handMode, setHandMode] = useState(() => {
-    try {
-      return localStorage.getItem('cyber_hand_mode') || 'right';
-    } catch {
-      return 'right';
-    }
-  });
-
-  const toggleHandMode = () => {
-    const next = handMode === 'right' ? 'left' : 'right';
-    setHandMode(next);
-    try {
-      localStorage.setItem('cyber_hand_mode', next);
-    } catch {
-      // Ignored
-    }
-  };
-
-  const [dialIndex, setDialIndex] = useState(0);
-
-  const rotatePrev = () => setDialIndex((i) => (i - 1 + FAN_MENU_BASE.length) % FAN_MENU_BASE.length);
-  const rotateNext = () => setDialIndex((i) => (i + 1) % FAN_MENU_BASE.length);
-
-  // Compute rotary dial coordinates
-  const dialRadius = 215;
-  const rotaryItems = FAN_MENU_BASE.map((item, idx) => {
-    let offset = idx - dialIndex;
-    if (offset > 3) offset -= 6;
-    if (offset < -2) offset += 6;
-
-    const angleDeg = 45 + offset * 36; // 45 deg is center target
-    const isVisible = angleDeg >= -5 && angleDeg <= 95;
-    const isCenter = offset === 0;
-
-    const rad = (angleDeg * Math.PI) / 180;
-    const sinVal = Math.sin(rad);
-    const cosVal = Math.cos(rad);
-
-    const dy = -Math.round(dialRadius * cosVal);
-    const dx = handMode === 'right'
-      ? -Math.round(dialRadius * sinVal)
-      : Math.round(dialRadius * sinVal);
-
-    return {
-      ...item,
-      offset,
-      angleDeg,
-      isVisible,
-      isCenter,
-      dx,
-      dy
-    };
-  });
 
   // Handle hash scrolling with fixed navbar offset
   const scrollToSection = (hash) => {
@@ -137,7 +76,7 @@ const Navbar = () => {
 
       window.scrollTo({
         top: offsetPosition,
-        behavior: 'smooth'
+        behavior: preferredScrollBehavior()
       });
     }
   };
@@ -158,12 +97,12 @@ const Navbar = () => {
       }
       window.scrollTo({
         top: 0,
-        behavior: 'smooth'
+        behavior: preferredScrollBehavior()
       });
     } else {
       window.scrollTo({
         top: 0,
-        behavior: 'instant'
+        behavior: 'auto'
       });
     }
   };
@@ -175,11 +114,26 @@ const Navbar = () => {
         scrollToSection(location.hash);
       }, 100);
     } else if (!location.hash) {
-      window.scrollTo({ top: 0, behavior: 'instant' });
+      window.scrollTo({ top: 0, behavior: 'auto' });
     }
   }, [location.pathname, location.hash, isHome]);
 
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const lastMenuTriggerRef = useRef(null);
+  const mobileSheetRef = useRef(null);
+  const mobileSheetCloseRef = useRef(null);
+
+  const handleMoreMenuToggle = (event) => {
+    if (!moreMenuOpen) {
+      lastMenuTriggerRef.current = event.currentTarget;
+    }
+    setMoreMenuOpen((open) => !open);
+  };
+
+  const closeMoreMenuAndRestoreFocus = () => {
+    setMoreMenuOpen(false);
+    window.requestAnimationFrame(() => lastMenuTriggerRef.current?.focus());
+  };
 
   // Close more menu on ESC or route change
   useEffect(() => {
@@ -188,12 +142,74 @@ const Navbar = () => {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') setMoreMenuOpen(false);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMoreMenuOpen(false);
+        window.requestAnimationFrame(() => lastMenuTriggerRef.current?.focus());
+      }
     };
     if (moreMenuOpen) {
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [moreMenuOpen]);
+
+  useEffect(() => {
+    if (!moreMenuOpen || window.matchMedia('(min-width: 768px)').matches) {
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      mobileSheetCloseRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [moreMenuOpen]);
+
+  useEffect(() => {
+    if (!moreMenuOpen || window.matchMedia('(min-width: 768px)').matches) {
+      return undefined;
+    }
+
+    const sheet = mobileSheetRef.current;
+    const trapFocus = (event) => {
+      if (event.key !== 'Tab' || !sheet) return;
+
+      const focusable = Array.from(sheet.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])'))
+        .filter((element) => !element.disabled && element.getAttribute('aria-hidden') !== 'true');
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', trapFocus);
+    return () => document.removeEventListener('keydown', trapFocus);
+  }, [moreMenuOpen]);
+
+  useEffect(() => {
+    if (!moreMenuOpen || window.matchMedia('(min-width: 768px)').matches) {
+      return undefined;
+    }
+
+    const { style } = document.body;
+    const previousOverflow = style.overflow;
+    const previousOverscrollBehavior = style.overscrollBehavior;
+
+    style.overflow = 'hidden';
+    style.overscrollBehavior = 'none';
+
+    return () => {
+      style.overflow = previousOverflow;
+      style.overscrollBehavior = previousOverscrollBehavior;
+    };
   }, [moreMenuOpen]);
 
   const isKnowledgeActive = location.pathname.startsWith('/knowledge') || location.pathname.startsWith('/docs');
@@ -203,10 +219,11 @@ const Navbar = () => {
   return (
     <>
       {/* ── Top Tactical Navigation Bar (Desktop & Mobile Header) ── */}
-      <nav className="fixed top-0 w-full z-50 flex justify-between items-center px-4 md:px-6 py-3 md:py-4 max-w-full dark:bg-[#090d1d]/90 bg-[#d4dce8]/95 backdrop-blur-xl border-b dark:border-white/10 border-b-2 border-slate-900 transition-colors duration-200 rounded-none shadow-sm dark:shadow-none select-none">
+      <nav aria-label="Fő navigáció" className="fixed top-0 w-full z-50 flex justify-between items-center px-4 md:px-6 py-3 md:py-4 max-w-full dark:bg-[#090d1d]/90 bg-[#d4dce8]/95 backdrop-blur-xl border-b dark:border-white/10 border-b-2 border-slate-900 transition-colors duration-200 rounded-none shadow-sm dark:shadow-none select-none">
         <Link 
           to="/" 
           onClick={handleLogoClick}
+          aria-current={isHome && !location.hash ? 'page' : undefined}
           className="text-xl sm:text-2xl font-black italic tracking-tighter dark:text-neonCyan text-slate-950 font-headline uppercase hover:opacity-80 transition-opacity"
         >
           SZÁNTOI_GÁBOR <span className="text-[11px] font-mono text-neonMagenta dark:text-neonMagenta">// AI</span>
@@ -218,11 +235,13 @@ const Navbar = () => {
             className="font-mono text-[10px] uppercase tracking-[0.2em] font-black dark:text-slate-400 text-slate-800 dark:hover:text-neonCyan hover:text-cyan-800 transition-all duration-300" 
             href="/#grid"
             onClick={(e) => handleNavClick(e, '#grid')}
+            aria-current={isHome && location.hash === '#grid' ? 'location' : undefined}
           >
             PROJEKTEK
           </a>
           <Link 
             to="/knowledge"
+            aria-current={isKnowledgeActive ? 'page' : undefined}
             className={`font-mono text-[10px] uppercase tracking-[0.2em] font-black transition-all duration-300 ${
               isKnowledgeActive 
                 ? 'dark:text-plasmaGreen text-emerald-800 underline underline-offset-8 decoration-emerald-800 font-bold' 
@@ -233,6 +252,7 @@ const Navbar = () => {
           </Link>
           <Link 
             to="/blog"
+            aria-current={isBlogActive ? 'page' : undefined}
             className={`font-mono text-[10px] uppercase tracking-[0.2em] font-black transition-all duration-300 ${
               isBlogActive 
                 ? 'dark:text-neonMagenta text-fuchsia-800 underline underline-offset-8 decoration-fuchsia-800 font-bold' 
@@ -243,20 +263,24 @@ const Navbar = () => {
           </Link>
           <Link 
             to="/mcp"
+            aria-current={isMcpActive ? 'page' : undefined}
             className={`font-mono text-[10px] uppercase tracking-[0.2em] font-black transition-all duration-300 flex items-center gap-1 ${
               isMcpActive 
                 ? 'dark:text-neonCyan text-cyan-800 underline underline-offset-8 decoration-cyan-800 font-bold' 
                 : 'dark:text-slate-400 text-slate-800 dark:hover:text-neonCyan hover:text-cyan-800'
             }`}
           >
-            <span className="w-1.5 h-1.5 bg-neonCyan inline-block animate-pulse" />
+            <span aria-hidden="true" className="w-1.5 h-1.5 bg-neonCyan inline-block animate-pulse" />
             <span>MCP UPLINK</span>
           </Link>
 
           {/* Desktop More Menu Trigger (•••) */}
           <button
             type="button"
-            onClick={() => setMoreMenuOpen((v) => !v)}
+            onClick={handleMoreMenuToggle}
+            aria-expanded={moreMenuOpen}
+            aria-controls="desktop-more-menu"
+            aria-haspopup="true"
             className={`font-mono text-[10px] uppercase tracking-[0.2em] font-black flex items-center gap-1 py-1 px-2 border transition-all cursor-pointer ${
               moreMenuOpen
                 ? 'border-neonCyan dark:text-neonCyan text-cyan-800 bg-neonCyan/10 shadow-[2px_2px_0_#00FFFF]'
@@ -276,13 +300,14 @@ const Navbar = () => {
           <Link 
             to="/admin"
             title="Overseer Admin Console"
+            aria-current={location.pathname === '/admin' ? 'page' : undefined}
             className={`p-1.5 sm:p-2 transition-all rounded-none flex items-center gap-1.5 ${
               location.pathname === '/admin'
                 ? 'dark:bg-neonCyan dark:text-black bg-slate-900 text-white border-2 border-slate-900 shadow-[2px_2px_0_#0f172a]'
                 : 'dark:border-transparent dark:text-neonCyan text-slate-900 border-2 border-slate-900 bg-white/40 hover:bg-slate-900 hover:text-white shadow-[2px_2px_0_#0f172a]'
             }`}
           >
-            <span className="material-symbols-outlined text-lg sm:text-xl">terminal</span>
+            <span aria-hidden="true" className="material-symbols-outlined text-lg sm:text-xl">terminal</span>
             <span className="font-mono text-[9px] font-black hidden sm:inline uppercase">ADMIN</span>
           </Link>
         </div>
@@ -291,45 +316,14 @@ const Navbar = () => {
       {/* ───────────────────────────────────────────────────────────── */}
       {/* 📱 ONE-HANDED MOBILE BOTTOM NAVIGATION BAR (THUMB ZONE)        */}
       {/* ───────────────────────────────────────────────────────────── */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden dark:bg-[#090d1d]/95 bg-[#d4dce8]/95 backdrop-blur-xl border-t-2 dark:border-white/15 border-slate-900 shadow-[0_-5px_25px_rgba(0,0,0,0.4)] pb-[max(env(safe-area-inset-bottom),8px)] pt-1 select-none">
+      <nav aria-label="Mobil navigáció" className="fixed bottom-0 left-0 right-0 z-50 md:hidden dark:bg-[#090d1d]/95 bg-[#d4dce8]/95 backdrop-blur-xl border-t-2 dark:border-white/15 border-slate-900 shadow-[0_-5px_25px_rgba(0,0,0,0.4)] pb-[max(env(safe-area-inset-bottom),8px)] pt-1 select-none">
         <div className="grid grid-cols-5 items-center px-1">
           
-          {/* If Left-handed: Trigger is on Column 1 */}
-          {handMode === 'left' && (
-            <button
-              type="button"
-              onClick={() => setMoreMenuOpen((v) => !v)}
-              className={`flex flex-col items-center justify-center py-1.5 px-0.5 transition-all text-center rounded-none relative cursor-pointer z-50 ${
-                moreMenuOpen
-                  ? 'dark:text-neonCyan text-cyan-800 font-bold bg-neonCyan/10 shadow-[0_0_15px_rgba(0,255,255,0.4)]'
-                  : 'dark:text-slate-400 text-slate-700 hover:dark:text-white'
-              }`}
-              aria-label={moreMenuOpen ? "Menü bezárása" : "További menüpontok megnyitása"}
-            >
-              {moreMenuOpen && (
-                <span className="absolute top-0 left-2 right-2 h-[2px] bg-neonCyan shadow-[0_0_8px_#00FFFF]" />
-              )}
-              <div className="flex items-center justify-center my-0.5 pointer-events-none">
-                {moreMenuOpen ? (
-                  <span className="material-symbols-outlined text-xl text-neonCyan animate-spin-once">close</span>
-                ) : (
-                  <div className="flex items-center gap-0.5 py-1">
-                    <span className="w-1.5 h-1.5 rounded-none bg-current" />
-                    <span className="w-1.5 h-1.5 rounded-none bg-current" />
-                    <span className="w-1.5 h-1.5 rounded-none bg-current" />
-                  </div>
-                )}
-              </div>
-              <span className="font-mono text-[8px] tracking-tight uppercase font-black truncate w-full">
-                {moreMenuOpen ? 'BEZÁR' : 'TOVÁBB...'}
-              </span>
-            </button>
-          )}
-
           {/* 1. Kezdőlap */}
           <Link
             to="/"
             onClick={handleLogoClick}
+            aria-current={isHome && !location.hash && !moreMenuOpen ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-1.5 px-0.5 transition-all text-center rounded-none relative ${
               isHome && !location.hash && !moreMenuOpen
                 ? 'dark:text-neonCyan text-cyan-800 font-bold'
@@ -339,7 +333,7 @@ const Navbar = () => {
             {isHome && !location.hash && !moreMenuOpen && (
               <span className="absolute top-0 left-2 right-2 h-[2px] bg-neonCyan shadow-[0_0_8px_#00FFFF]" />
             )}
-            <span className="material-symbols-outlined text-xl mb-0.5">home</span>
+            <span aria-hidden="true" className="material-symbols-outlined text-xl mb-0.5">home</span>
             <span className="font-mono text-[8px] tracking-tight uppercase font-black truncate w-full">FŐOLDAL</span>
           </Link>
 
@@ -347,6 +341,7 @@ const Navbar = () => {
           <a
             href="/#grid"
             onClick={(e) => { handleNavClick(e, '#grid'); setMoreMenuOpen(false); }}
+            aria-current={isHome && location.hash === '#grid' && !moreMenuOpen ? 'location' : undefined}
             className={`flex flex-col items-center justify-center py-1.5 px-0.5 transition-all text-center rounded-none relative ${
               isHome && location.hash === '#grid' && !moreMenuOpen
                 ? 'dark:text-neonCyan text-cyan-800 font-bold'
@@ -356,7 +351,7 @@ const Navbar = () => {
             {isHome && location.hash === '#grid' && !moreMenuOpen && (
               <span className="absolute top-0 left-2 right-2 h-[2px] bg-neonCyan shadow-[0_0_8px_#00FFFF]" />
             )}
-            <span className="material-symbols-outlined text-xl mb-0.5">grid_view</span>
+            <span aria-hidden="true" className="material-symbols-outlined text-xl mb-0.5">grid_view</span>
             <span className="font-mono text-[8px] tracking-tight uppercase font-black truncate w-full">PROJEKTEK</span>
           </a>
 
@@ -364,6 +359,7 @@ const Navbar = () => {
           <Link
             to="/knowledge"
             onClick={() => setMoreMenuOpen(false)}
+            aria-current={isKnowledgeActive && !moreMenuOpen ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-1.5 px-0.5 transition-all text-center rounded-none relative ${
               isKnowledgeActive && !moreMenuOpen
                 ? 'dark:text-plasmaGreen text-emerald-800 font-bold'
@@ -373,7 +369,7 @@ const Navbar = () => {
             {isKnowledgeActive && !moreMenuOpen && (
               <span className="absolute top-0 left-2 right-2 h-[2px] bg-plasmaGreen shadow-[0_0_8px_#80FF00]" />
             )}
-            <span className="material-symbols-outlined text-xl mb-0.5">psychology</span>
+            <span aria-hidden="true" className="material-symbols-outlined text-xl mb-0.5">psychology</span>
             <span className="font-mono text-[8px] tracking-tight uppercase font-black truncate w-full">TUDÁSTÁR</span>
           </Link>
 
@@ -381,6 +377,7 @@ const Navbar = () => {
           <Link
             to="/blog"
             onClick={() => setMoreMenuOpen(false)}
+            aria-current={isBlogActive && !moreMenuOpen ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-1.5 px-0.5 transition-all text-center rounded-none relative ${
               isBlogActive && !moreMenuOpen
                 ? 'dark:text-neonMagenta text-fuchsia-800 font-bold'
@@ -390,202 +387,123 @@ const Navbar = () => {
             {isBlogActive && !moreMenuOpen && (
               <span className="absolute top-0 left-2 right-2 h-[2px] bg-neonMagenta shadow-[0_0_8px_#FF00FF]" />
             )}
-            <span className="material-symbols-outlined text-xl mb-0.5">feed</span>
+            <span aria-hidden="true" className="material-symbols-outlined text-xl mb-0.5">feed</span>
             <span className="font-mono text-[8px] tracking-tight uppercase font-black truncate w-full">BLOG</span>
           </Link>
 
-          {/* If Right-handed: Trigger is on Column 5 */}
-          {handMode === 'right' && (
-            <button
-              type="button"
-              onClick={() => setMoreMenuOpen((v) => !v)}
-              className={`flex flex-col items-center justify-center py-1.5 px-0.5 transition-all text-center rounded-none relative cursor-pointer z-50 ${
-                moreMenuOpen
-                  ? 'dark:text-neonCyan text-cyan-800 font-bold bg-neonCyan/10 shadow-[0_0_15px_rgba(0,255,255,0.4)]'
-                  : 'dark:text-slate-400 text-slate-700 hover:dark:text-white'
-              }`}
-              aria-label={moreMenuOpen ? "Menü bezárása" : "További menüpontok megnyitása"}
-            >
-              {moreMenuOpen && (
-                <span className="absolute top-0 left-2 right-2 h-[2px] bg-neonCyan shadow-[0_0_8px_#00FFFF]" />
-              )}
-              <div className="flex items-center justify-center my-0.5 pointer-events-none">
-                {moreMenuOpen ? (
-                  <span className="material-symbols-outlined text-xl text-neonCyan animate-spin-once">close</span>
-                ) : (
-                  <div className="flex items-center gap-0.5 py-1">
-                    <span className="w-1.5 h-1.5 rounded-none bg-current" />
-                    <span className="w-1.5 h-1.5 rounded-none bg-current" />
-                    <span className="w-1.5 h-1.5 rounded-none bg-current" />
-                  </div>
-                )}
-              </div>
-              <span className="font-mono text-[8px] tracking-tight uppercase font-black truncate w-full">
-                {moreMenuOpen ? 'BEZÁR' : 'TOVÁBB...'}
-              </span>
-            </button>
-          )}
+          <button
+            type="button"
+            data-testid="mobile-more-trigger"
+            onClick={handleMoreMenuToggle}
+            aria-label={moreMenuOpen ? 'További oldalak bezárása' : 'További oldalak megnyitása'}
+            aria-expanded={moreMenuOpen}
+            aria-controls="mobile-more-sheet"
+            aria-haspopup="dialog"
+            className={`flex flex-col items-center justify-center py-1.5 px-0.5 transition-all text-center rounded-none relative cursor-pointer ${
+              moreMenuOpen
+                ? 'dark:text-neonCyan text-cyan-800 font-bold bg-neonCyan/10 shadow-[0_0_15px_rgba(0,255,255,0.4)]'
+                : 'dark:text-slate-400 text-slate-700 hover:dark:text-white'
+            }`}
+          >
+            {moreMenuOpen && (
+              <span className="absolute top-0 left-2 right-2 h-[2px] bg-neonCyan shadow-[0_0_8px_#00FFFF]" />
+            )}
+            <span aria-hidden="true" className="material-symbols-outlined text-xl mb-0.5">
+              {moreMenuOpen ? 'close' : 'more_horiz'}
+            </span>
+            <span className="font-mono text-[8px] tracking-tight uppercase font-black truncate w-full">
+              {moreMenuOpen ? 'BEZÁR' : 'TOVÁBB'}
+            </span>
+          </button>
 
         </div>
-      </div>
+      </nav>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 📱 1. MOBIL: EGYKEZES HÜVELYKUJJ FORGÓTÁRCSA (ROTARY DIAL)    */}
+      {/* 📱 MOBIL: ÁTTEKINTHETŐ ALSÓ NAVIGÁCIÓS PANEL                  */}
       {/* ───────────────────────────────────────────────────────────── */}
       <AnimatePresence>
         {moreMenuOpen && (
-          <div className="fixed inset-0 z-40 md:hidden pointer-events-auto select-none">
-            {/* Backdrop */}
-            <motion.div
+          <div className="fixed inset-0 z-[60] md:hidden select-none">
+            <motion.button
+              type="button"
+              tabIndex={-1}
+              data-testid="mobile-more-backdrop"
+              aria-label="További oldalak bezárása"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               className="fixed inset-0 dark:bg-[#090d1d]/90 bg-slate-950/40 backdrop-blur-md"
-              onClick={() => setMoreMenuOpen(false)}
+              onClick={closeMoreMenuAndRestoreFocus}
             />
 
-            {/* Handedness Switcher Button at top corner */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              className={`fixed top-20 z-50 ${
-                handMode === 'right' ? 'left-4' : 'right-4'
-              }`}
+            <motion.section
+              ref={mobileSheetRef}
+              id="mobile-more-sheet"
+              data-testid="mobile-more-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label="További oldalak"
+              aria-labelledby="mobile-more-title"
+              initial={{ opacity: 0, y: '100%' }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: '100%' }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="fixed inset-x-0 bottom-0 z-10 max-h-[calc(100dvh-0.5rem)] overflow-y-auto dark:bg-[#070b19] bg-[#e2e9f3] border-t-2 dark:border-neonCyan border-slate-900 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] shadow-[0_-12px_35px_rgba(0,0,0,0.45)]"
             >
-              <button
-                type="button"
-                onClick={toggleHandMode}
-                className="flex items-center gap-1.5 py-2 px-3 border-2 dark:border-yellow-400/90 border-slate-900 dark:bg-[#070b19]/95 bg-amber-300 dark:text-yellow-400 text-slate-950 rounded-none shadow-[3px_3px_0_#0f172a] text-[10px] font-mono font-black uppercase cursor-pointer hover:dark:bg-yellow-400 hover:dark:text-black hover:bg-slate-900 hover:text-white transition-colors select-none"
-                title="Kezesség váltása (Jobb / Balkezes mód)"
-              >
-                <span className="text-sm">✋</span>
-                <span>MÓD: {handMode === 'right' ? 'JOBBKEZES' : 'BALKEZES'}</span>
-              </button>
-            </motion.div>
-
-            {/* Rotary Dial Chassis & Laser Arc */}
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 0.6 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 280, damping: 26 }}
-              className={`fixed bottom-6 w-96 h-96 border-2 border-dashed dark:border-neonCyan border-slate-900 pointer-events-none dark:shadow-[0_0_25px_rgba(0,255,255,0.25)] shadow-[0_0_25px_rgba(15,23,42,0.15)] ${
-                handMode === 'right'
-                  ? 'right-6 rounded-tl-full origin-bottom-right'
-                  : 'left-6 rounded-tr-full origin-bottom-left'
-              }`}
-            >
-              {/* Target Reticle at 45 degree focal point */}
-              <div className={`absolute w-12 h-12 border-2 dark:border-neonCyan border-cyan-800 dark:bg-transparent bg-cyan-200/40 animate-pulse flex items-center justify-center ${
-                handMode === 'right'
-                  ? 'top-20 left-20 -rotate-45'
-                  : 'top-20 right-20 rotate-45'
-              }`}>
-                <span className="w-2 h-2 dark:bg-neonCyan bg-cyan-800" />
+              <div className="mb-2.5 flex items-center justify-between gap-3 border-b-2 dark:border-white/10 border-slate-900 pb-2">
+                <div>
+                  <span className="block font-mono text-[8px] font-black uppercase tracking-[0.16em] text-neonCyan">// NAVIGÁCIÓS_PANEL</span>
+                  <h2 id="mobile-more-title" className="font-headline text-lg font-black uppercase text-slate-950 dark:text-white">További oldalak</h2>
+                </div>
+                <button
+                  ref={mobileSheetCloseRef}
+                  type="button"
+                  onClick={closeMoreMenuAndRestoreFocus}
+                  aria-label="További oldalak bezárása"
+                  className="min-h-10 shrink-0 border-2 dark:border-neonCyan border-slate-900 bg-white px-2.5 dark:bg-slate-900 dark:text-neonCyan text-slate-950 font-mono text-[10px] font-black uppercase transition-colors hover:bg-slate-900 hover:text-white dark:hover:bg-neonCyan dark:hover:text-black"
+                >
+                  <span aria-hidden="true" className="material-symbols-outlined mr-1 align-[-3px] text-base">close</span>
+                  Bezár
+                </button>
               </div>
-            </motion.div>
 
-            {/* Stepper Rotation Buttons */}
-            <div className={`fixed bottom-20 z-50 flex items-center gap-2 ${
-              handMode === 'right' ? 'right-6' : 'left-6'
-            }`}>
-              <button
-                type="button"
-                onClick={rotatePrev}
-                className="py-1.5 px-3 border-2 dark:border-neonCyan border-slate-900 dark:bg-[#070b19] bg-white dark:text-neonCyan text-slate-950 font-mono font-black text-xs uppercase shadow-[3px_3px_0_#0f172a] hover:dark:bg-neonCyan hover:dark:text-black hover:bg-slate-900 hover:text-white transition-colors active:scale-95 cursor-pointer"
-                title="Tárcsa forgatása balra"
-              >
-                ◀ FORGATÁS
-              </button>
-              <button
-                type="button"
-                onClick={rotateNext}
-                className="py-1.5 px-3 border-2 dark:border-neonCyan border-slate-900 dark:bg-[#070b19] bg-white dark:text-neonCyan text-slate-950 font-mono font-black text-xs uppercase shadow-[3px_3px_0_#0f172a] hover:dark:bg-neonCyan hover:dark:text-black hover:bg-slate-900 hover:text-white transition-colors active:scale-95 cursor-pointer"
-                title="Tárcsa forgatása jobbra"
-              >
-                FORGATÁS ▶
-              </button>
-            </div>
-
-            {/* Rotary Dial Items Container anchored at thumb position */}
-            <div className={`fixed bottom-16 pointer-events-auto ${
-              handMode === 'right' ? 'right-5' : 'left-5'
-            }`}>
-              {rotaryItems.map((item) => {
-                if (!item.isVisible) return null;
-
-                return (
-                  <motion.div
-                    key={item.id}
-                    layout
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{
-                      scale: item.isCenter ? 1.1 : 0.88,
-                      opacity: item.isCenter ? 1 : 0.8,
-                      x: item.dx,
-                      y: item.dy,
-                      zIndex: item.isCenter ? 30 : 10
-                    }}
-                    exit={{ scale: 0, opacity: 0 }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 420,
-                      damping: 28
-                    }}
-                    className={`absolute bottom-0 ${
-                      handMode === 'right' 
-                        ? 'right-0 origin-bottom-right' 
-                        : 'left-0 origin-bottom-left'
-                    }`}
-                  >
-                    {item.to ? (
-                      <Link
-                        to={item.to}
-                        onClick={() => setMoreMenuOpen(false)}
-                        className={`flex items-center gap-2.5 py-2 px-3.5 border-2 rounded-none whitespace-nowrap transition-all ${
-                          item.isCenter
-                            ? 'dark:bg-neonCyan dark:text-black dark:border-neonCyan bg-cyan-400 text-slate-950 border-slate-950 shadow-[4px_4px_0_#0f172a] font-black'
-                            : `dark:bg-[#070b19]/95 bg-white dark:text-white text-slate-950 border-slate-900 dark:border-white/20 ${item.glow}`
-                        }`}
-                      >
-                        <span className={`material-symbols-outlined text-lg ${
-                          item.isCenter ? 'text-slate-950 dark:text-black' : item.textColor
-                        }`}>
-                          {item.icon}
+              <nav aria-label="További oldalak">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {MORE_MENU_ITEMS.map((item) => {
+                    const itemClassName = `flex min-h-[5.5rem] min-w-0 flex-col justify-between gap-1.5 border-2 p-2.5 dark:bg-slate-900/70 bg-white font-mono transition-colors hover:border-neonCyan focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${item.accent}`;
+                    const content = (
+                      <>
+                        <span aria-hidden="true" className="material-symbols-outlined text-lg">{item.icon}</span>
+                        <span className="min-w-0">
+                          <span className="block break-words font-headline text-[10px] font-black uppercase leading-tight text-slate-950 dark:text-white">{item.label}</span>
+                          <span className="block break-words text-[8px] leading-snug dark:text-slate-400 text-slate-700">{item.description}</span>
                         </span>
-                        <span className="font-headline font-black text-xs uppercase tracking-wider">
-                          {item.label}
-                        </span>
+                      </>
+                    );
+
+                    return item.to ? (
+                      <Link key={item.id} to={item.to} onClick={() => setMoreMenuOpen(false)} className={itemClassName}>
+                        {content}
                       </Link>
                     ) : (
                       <a
+                        key={item.id}
                         href={`/${item.hash}`}
-                        onClick={(e) => {
-                          handleNavClick(e, item.hash);
+                        onClick={(event) => {
+                          handleNavClick(event, item.hash);
                           setMoreMenuOpen(false);
                         }}
-                        className={`flex items-center gap-2.5 py-2 px-3.5 border-2 rounded-none whitespace-nowrap transition-all ${
-                          item.isCenter
-                            ? 'dark:bg-neonCyan dark:text-black dark:border-neonCyan bg-cyan-400 text-slate-950 border-slate-950 shadow-[4px_4px_0_#0f172a] font-black'
-                            : `dark:bg-[#070b19]/95 bg-white dark:text-white text-slate-950 border-slate-900 dark:border-white/20 ${item.glow}`
-                        }`}
+                        className={itemClassName}
                       >
-                        <span className={`material-symbols-outlined text-lg ${
-                          item.isCenter ? 'text-slate-950 dark:text-black' : item.textColor
-                        }`}>
-                          {item.icon}
-                        </span>
-                        <span className="font-headline font-black text-xs uppercase tracking-wider">
-                          {item.label}
-                        </span>
+                        {content}
                       </a>
-                    )}
-                  </motion.div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              </nav>
+            </motion.section>
           </div>
         )}
       </AnimatePresence>
@@ -595,7 +513,7 @@ const Navbar = () => {
       {/* ───────────────────────────────────────────────────────────── */}
       <AnimatePresence>
         {moreMenuOpen && (
-          <div className="hidden md:block fixed top-16 right-6 z-50 select-none">
+          <div id="desktop-more-menu" className="hidden md:block fixed top-16 right-6 z-50 select-none">
             {/* Backdrop */}
             <div 
               className="fixed inset-0 bg-transparent"
@@ -615,7 +533,8 @@ const Navbar = () => {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setMoreMenuOpen(false)}
+                  onClick={closeMoreMenuAndRestoreFocus}
+                  aria-label="További menüpontok bezárása"
                   className="text-xs font-mono font-bold text-slate-400 hover:text-neonMagenta cursor-pointer"
                 >
                   [ESC ✕]
@@ -628,7 +547,7 @@ const Navbar = () => {
                   onClick={() => setMoreMenuOpen(false)}
                   className="p-2.5 border dark:border-white/10 border-slate-300 dark:bg-slate-900/60 bg-slate-50 hover:border-neonCyan transition-all flex items-center gap-2.5 group"
                 >
-                  <span className="material-symbols-outlined text-neonCyan text-lg">hub</span>
+                  <span aria-hidden="true" className="material-symbols-outlined text-neonCyan text-lg">hub</span>
                   <div>
                     <span className="font-headline font-black uppercase text-slate-950 dark:text-white block group-hover:text-neonCyan">
                       MCP UPLINK
@@ -642,7 +561,7 @@ const Navbar = () => {
                   onClick={(e) => { handleNavClick(e, '#diagnostics'); setMoreMenuOpen(false); }}
                   className="p-2.5 border dark:border-white/10 border-slate-300 dark:bg-slate-900/60 bg-slate-50 hover:border-neonCyan transition-all flex items-center gap-2.5 group"
                 >
-                  <span className="material-symbols-outlined text-yellow-400 text-lg">insights</span>
+                  <span aria-hidden="true" className="material-symbols-outlined text-yellow-400 text-lg">insights</span>
                   <div>
                     <span className="font-headline font-black uppercase text-slate-950 dark:text-white block group-hover:text-neonCyan">
                       MÓDSZERTAN
@@ -656,7 +575,7 @@ const Navbar = () => {
                   onClick={(e) => { handleNavClick(e, '#arsenal'); setMoreMenuOpen(false); }}
                   className="p-2.5 border dark:border-white/10 border-slate-300 dark:bg-slate-900/60 bg-slate-50 hover:border-neonCyan transition-all flex items-center gap-2.5 group"
                 >
-                  <span className="material-symbols-outlined text-neonMagenta text-lg">terminal</span>
+                  <span aria-hidden="true" className="material-symbols-outlined text-neonMagenta text-lg">terminal</span>
                   <div>
                     <span className="font-headline font-black uppercase text-slate-950 dark:text-white block group-hover:text-neonCyan">
                       ESZKÖZTÁR
@@ -670,7 +589,7 @@ const Navbar = () => {
                   onClick={() => setMoreMenuOpen(false)}
                   className="p-2.5 border dark:border-white/10 border-slate-300 dark:bg-slate-900/60 bg-slate-50 hover:border-neonCyan transition-all flex items-center gap-2.5 group"
                 >
-                  <span className="material-symbols-outlined text-cyan-400 text-lg">account_tree</span>
+                  <span aria-hidden="true" className="material-symbols-outlined text-cyan-400 text-lg">account_tree</span>
                   <div>
                     <span className="font-headline font-black uppercase text-slate-950 dark:text-white block group-hover:text-neonCyan">
                       ARCHITEKTÚRA
@@ -684,7 +603,7 @@ const Navbar = () => {
                   onClick={(e) => { handleNavClick(e, '#uplink'); setMoreMenuOpen(false); }}
                   className="p-2.5 border dark:border-white/10 border-slate-300 dark:bg-slate-900/60 bg-slate-50 hover:border-neonCyan transition-all flex items-center gap-2.5 group"
                 >
-                  <span className="material-symbols-outlined text-plasmaGreen text-lg">send</span>
+                  <span aria-hidden="true" className="material-symbols-outlined text-plasmaGreen text-lg">send</span>
                   <div>
                     <span className="font-headline font-black uppercase text-slate-950 dark:text-white block group-hover:text-neonCyan">
                       KAPCSOLAT

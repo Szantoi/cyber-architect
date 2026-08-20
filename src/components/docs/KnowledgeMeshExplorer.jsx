@@ -25,6 +25,12 @@ const KnowledgeMeshExplorer = ({ onSelectDoc }) => {
   const [hoveredNode, setHoveredNode] = useState(null);
 
   const getNode = (id) => NODES.find(n => n.id === id);
+  const selectNode = (node) => {
+    setSelectedNode(node);
+    if (onSelectDoc && node.docSlug) {
+      onSelectDoc(node.docSlug);
+    }
+  };
 
   return (
     <div className="border-2 dark:border-white/10 border-slate-900 bg-[var(--surface-panel)] p-6 relative rounded-none shadow-[6px_6px_0_#0f172a] dark:shadow-none mb-8">
@@ -47,7 +53,7 @@ const KnowledgeMeshExplorer = ({ onSelectDoc }) => {
       </div>
 
       <div className="relative w-full h-[480px] bg-slate-950/80 border border-white/5 overflow-hidden flex items-center justify-center">
-        <svg className="w-full h-full" viewBox="0 0 800 500">
+        <svg className="w-full h-full" viewBox="0 0 800 500" role="group" aria-label="Interaktív technológiai kapcsolati térkép">
           {/* Grid background lines */}
           <defs>
             <pattern id="cyber-grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -89,11 +95,15 @@ const KnowledgeMeshExplorer = ({ onSelectDoc }) => {
               <g
                 key={node.id}
                 transform={`translate(${node.x}, ${node.y})`}
-                className="cursor-pointer group"
-                onClick={() => {
-                  setSelectedNode(node);
-                  if (onSelectDoc && node.docSlug) {
-                    onSelectDoc(node.docSlug);
+                className="knowledge-node cursor-pointer group"
+                role="button"
+                tabIndex={0}
+                aria-label={`${node.label} csomópont megnyitása`}
+                onClick={() => selectNode(node)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    selectNode(node);
                   }
                 }}
                 onMouseEnter={() => setHoveredNode(node)}
@@ -136,6 +146,7 @@ const KnowledgeMeshExplorer = ({ onSelectDoc }) => {
             </div>
             {selectedNode.docSlug && onSelectDoc && (
               <button
+                type="button"
                 onClick={() => onSelectDoc(selectedNode.docSlug)}
                 className="px-4 py-1.5 bg-neonCyan text-black font-black uppercase text-[10px] hover:bg-white transition-all shadow-[2px_2px_0_#0f172a]"
               >

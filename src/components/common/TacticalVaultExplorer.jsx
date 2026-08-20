@@ -8,7 +8,6 @@ import {
   FileText,
   ChevronRight,
   ChevronDown,
-  X,
   Sparkles,
   LayoutGrid,
   Zap,
@@ -34,6 +33,10 @@ import TacticalAudioPlayer from '../multimedia/TacticalAudioPlayer.jsx';
 import VideoPlayer from '../multimedia/VideoPlayer.jsx';
 import { extractHeadings } from '../../utils/markdownHeadings.js';
 import { getTreeFolders } from '../../utils/taxonomy.js';
+
+const preferredScrollBehavior = () => (
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+);
 
 
 // ============================================================================
@@ -275,7 +278,9 @@ export const InArticleSearchConsole = ({
           {/* Search input field */}
           <div className="flex-1 flex items-center gap-2 px-2.5 py-1 dark:bg-slate-900 bg-slate-100 border-2 dark:border-neonCyan border-slate-400 focus-within:border-plasmaGreen transition-all">
             <Search size={13} className="text-neonCyan shrink-0" />
+            <label htmlFor="in-article-search" className="sr-only">Keresés a cikken belül</label>
             <input
+              id="in-article-search"
               type="text"
               placeholder="KERESÉS A CIKKEN BELÜL (KIFEJEZÉS, KÓD)..."
               value={searchQuery}
@@ -553,6 +558,13 @@ const DEFAULT_HEADER_CONFIG = {
   headerTitle: 'KNOWLEDGE_VAULT'
 };
 
+const INITIAL_VISIBLE_FOLDER_ITEMS = 6;
+const FOLDER_ITEMS_PAGE_SIZE = 6;
+const INITIAL_VISIBLE_FOLDERS = 8;
+const FOLDERS_PAGE_SIZE = 8;
+const INITIAL_VISIBLE_HUB_RESULTS = 12;
+const HUB_RESULTS_PAGE_SIZE = 12;
+
 const TacticalVaultExplorer = ({
   vaultType = 'knowledge', // 'knowledge' | 'blog'
   baseRoute = '/knowledge',
@@ -657,8 +669,31 @@ const TacticalVaultExplorer = ({
   const [inArticleFilterLevel, setInArticleFilterLevel] = useState('ALL');
 
   // Layout States
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // The desktop keeps its persistent navigator, while compact viewports start
+  // with an unobtrusive, explicitly opened drawer.
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth >= 1280;
+  });
   const [collapsedFolders, setCollapsedFolders] = useState({});
+  const [visibleFolderItems, setVisibleFolderItems] = useState({});
+  const [visibleFolderCount, setVisibleFolderCount] = useState(INITIAL_VISIBLE_FOLDERS);
+  const [visibleHubResultCount, setVisibleHubResultCount] = useState(INITIAL_VISIBLE_HUB_RESULTS);
+
+  const closeMobileSidebar = useCallback(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
+      setSidebarOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const closeOnCompactViewport = () => {
+      if (window.innerWidth < 1280) setSidebarOpen(false);
+    };
+
+    window.addEventListener('resize', closeOnCompactViewport);
+    return () => window.removeEventListener('resize', closeOnCompactViewport);
+  }, []);
 
   const toggleFolder = (categoryName, e) => {
     if (e) e.stopPropagation();
@@ -672,11 +707,16 @@ const TacticalVaultExplorer = ({
   };
 
   const handleSelectFolder = (categoryName) => {
+    closeMobileSidebar();
     setActiveDoc(null);
     setSelectedCategory((prev) => (prev === categoryName ? 'ALL' : categoryName));
     setCollapsedFolders((prev) => ({
       ...prev,
       [categoryName]: false
+    }));
+    setVisibleFolderItems((prev) => ({
+      ...prev,
+      [categoryName]: INITIAL_VISIBLE_FOLDER_ITEMS
     }));
   };
 
@@ -686,11 +726,15 @@ const TacticalVaultExplorer = ({
   // held in a ref so changing filters does not retrigger the initial document fetch.
   const loadDoc = useCallback(async (docItem, updateUrl = true) => {
     const currentSearchQuery = searchQueryRef.current;
+    closeMobileSidebar();
     setIsLoading(true);
     setActiveDoc(docItem);
     setInArticleQuery(currentSearchQuery || '');
     if (updateUrl) {
       navigate(`${baseRoute}/${docItem.slug}`, { state: { searchQuery: currentSearchQuery } });
+    }
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
     }
     try {
       const res = await fetch(getDocumentUrl(docItem.slug));
@@ -705,7 +749,7 @@ const TacticalVaultExplorer = ({
     } finally {
       setIsLoading(false);
     }
-  }, [baseRoute, getDocumentUrl, navigate]);
+  }, [baseRoute, closeMobileSidebar, getDocumentUrl, navigate]);
 
   // 1. Initial Load of Docs & URL synchronization
   useEffect(() => {
@@ -777,9 +821,13 @@ const TacticalVaultExplorer = ({
   }, [searchQuery, selectedCategory, selectedIparag, selectedTech, selectedCelcsoport, sortBy, apiEndpoints]);
 
   const closeDocToHub = () => {
+    closeMobileSidebar();
     setActiveDoc(null);
     setContent('');
     navigate(baseRoute, { state: { searchQuery } });
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
+    }
   };
 
 
@@ -965,6 +1013,18 @@ const TacticalVaultExplorer = ({
     return filtered;
   }, [searchResults, docs, searchQuery, selectedCategory, selectedIparag, selectedTech, selectedCelcsoport, sortBy, treePivotMode, smartFilters]);
 
+  // Keep the hub scannable even when a broad search returns many documents.
+  // A filter/sort change deliberately starts the visitor from the first page again.
+  useEffect(() => {
+    setVisibleHubResultCount(INITIAL_VISIBLE_HUB_RESULTS);
+  }, [displayDocs]);
+
+  const visibleHubDocs = useMemo(
+    () => displayDocs.slice(0, visibleHubResultCount),
+    [displayDocs, visibleHubResultCount]
+  );
+  const remainingHubResults = Math.max(displayDocs.length - visibleHubDocs.length, 0);
+
   // Dynamic Item Counts for Smart Virtual Collections
   const smartCounts = useMemo(() => {
     const list = docs || [];
@@ -991,6 +1051,25 @@ const TacticalVaultExplorer = ({
     });
     return map;
   }, [searchResults, docs, treePivotMode]);
+
+  const categoryEntries = useMemo(
+    () => Object.entries(categoriesGroup)
+      .filter(([category]) => selectedCategory === 'ALL' || selectedCategory === category),
+    [categoriesGroup, selectedCategory]
+  );
+
+  // Pivot/search/category changes can create an entirely new folder tree, so
+  // return it to its compact first page rather than carrying stale expansion counts.
+  useEffect(() => {
+    setVisibleFolderItems({});
+    setVisibleFolderCount(INITIAL_VISIBLE_FOLDERS);
+  }, [categoriesGroup, selectedCategory]);
+
+  const visibleCategoryEntries = useMemo(
+    () => categoryEntries.slice(0, visibleFolderCount),
+    [categoryEntries, visibleFolderCount]
+  );
+  const remainingFolderCategories = Math.max(categoryEntries.length - visibleCategoryEntries.length, 0);
 
   // Bi-Directional Backlinks & Semantic Mesh Connections for Active Doc
   const backlinks = useMemo(() => {
@@ -1075,7 +1154,7 @@ const TacticalVaultExplorer = ({
     }
 
     if (targetEl) {
-      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetEl.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'center' });
 
       // Szint-specifikus neon szín kiválasztása
       let ringColor = 'ring-plasmaGreen';
@@ -1117,7 +1196,7 @@ const TacticalVaultExplorer = ({
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] pt-20 transition-colors duration-200">
+    <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] pt-20 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-10 transition-colors duration-200">
       
       {/* ── Tactical Header Bar ── */}
       <div className="border-b-2 dark:border-white/10 border-slate-900 dark:bg-slate-900/90 bg-white/95 backdrop-blur-md px-3 sm:px-6 py-3.5 flex items-center justify-between gap-2 sticky top-16 z-30 transition-colors shadow-sm font-mono">
@@ -1140,6 +1219,27 @@ const TacticalVaultExplorer = ({
 
         {/* Right Header Actions */}
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          {/* Persistent, named entry point for the folder navigator. */}
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((v) => !v)}
+            aria-controls="vault-folder-sidebar"
+            aria-expanded={sidebarOpen}
+            data-testid="vault-folder-toggle"
+            className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 border-2 px-2 py-1.5 font-mono text-[10px] font-black uppercase tracking-wide transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neonCyan focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 ${
+              sidebarOpen
+                ? 'dark:border-neonCyan dark:bg-neonCyan/15 dark:text-neonCyan border-cyan-800 bg-cyan-100 text-cyan-950'
+                : 'dark:border-white/20 dark:bg-slate-900 dark:text-white border-slate-900 bg-white text-slate-900 hover:border-cyan-600 dark:hover:border-neonCyan'
+            }`}
+            title={sidebarOpen ? 'Mappák és szűrők elrejtése' : 'Mappák és szűrők megnyitása'}
+          >
+            <FolderOpen size={14} aria-hidden="true" />
+            <span className="sm:hidden">MAPPÁK</span>
+            <span className="hidden sm:inline">{sidebarOpen ? 'MAPPÁK NYITVA' : 'MAPPÁK ÉS SZŰRŐK'}</span>
+            <span className="hidden md:inline border-l border-current/30 pl-1.5 text-[9px]">{categoryEntries.length}</span>
+            <ChevronDown size={13} aria-hidden="true" className={`transition-transform ${sidebarOpen ? 'rotate-180' : ''}`} />
+          </button>
+
           {/* Deep-Link Share Button */}
           <button
             onClick={handleShareView}
@@ -1160,74 +1260,48 @@ const TacticalVaultExplorer = ({
             </button>
           ) : (
             <div className="text-[11px] font-bold dark:text-slate-400 text-slate-700 hidden sm:block">
-              MUTATVA: <strong className="text-neonCyan">{displayDocs.length}</strong> / {docs.length} TÉTEL
+              MUTATVA: <strong className="text-neonCyan">{visibleHubDocs.length}</strong> / {displayDocs.length} TÉTEL
             </div>
           )}
-
-          {/* Mobile Sidebar Button */}
-          <button
-            onClick={() => setSidebarOpen((v) => !v)}
-            className="xl:hidden shrink-0 dark:text-neonCyan text-cyan-700 p-1.5 border-2 border-slate-900 dark:border-neonCyan hover:bg-neonCyan/10 transition-colors cursor-pointer"
-            title="Navigáció megnyitása"
-            aria-label="Navigáció megnyitása"
-          >
-            {sidebarOpen ? <X size={16} /> : <FolderOpen size={16} />}
-          </button>
         </div>
       </div>
 
       {/* ── 3-Column Main Layout ── */}
-      <div className="flex min-w-0 h-[calc(100vh-8.5rem)] relative">
-        
-        {/* ── Tactical Ribbed Tab (Bordázott Fül) Sidebar Toggle Handle ── */}
-        <button
-          type="button"
-          onClick={() => setSidebarOpen((v) => !v)}
-          className={`
-            fixed z-30 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center
-            w-6 sm:w-7 py-3 transition-all duration-300 cursor-pointer select-none
-            border-2 border-slate-900 dark:border-neonCyan shadow-[3px_3px_0_#0f172a]
-            dark:bg-[#070b19] bg-slate-900 text-white dark:text-neonCyan
-            hover:dark:bg-neonCyan hover:dark:text-black hover:bg-neonCyan hover:text-black
-            hover:shadow-[-3px_0_12px_#00FFFF,3px_0_12px_#FF00FF] rounded-none group
-            ${sidebarOpen ? 'left-72 sm:left-84 border-l-0' : 'left-0 border-l-0'}
-          `}
-          title={sidebarOpen ? "Oldalsáv elrejtése" : "Oldalsáv kinyitása"}
-          aria-label={sidebarOpen ? "Oldalsáv elrejtése" : "Oldalsáv kinyitása"}
-        >
-          {/* Chevron Indicator */}
-          <span className="text-[10px] font-mono font-black transition-transform duration-300 group-hover:scale-125">
-            {sidebarOpen ? '◀' : '▶'}
-          </span>
-
-          {/* Tactile Ribbed Grip Ridges (Bordázat) */}
-          <div className="flex flex-col gap-[3px] items-center justify-center my-1.5 pointer-events-none">
-            <span className="w-3.5 h-[2px] bg-neonCyan group-hover:bg-black dark:group-hover:bg-black transition-colors rounded-none shadow-[0_0_4px_#00FFFF]" />
-            <span className="w-3.5 h-[2px] bg-neonCyan group-hover:bg-black dark:group-hover:bg-black transition-colors rounded-none shadow-[0_0_4px_#00FFFF]" />
-            <span className="w-3.5 h-[2px] bg-neonCyan group-hover:bg-black dark:group-hover:bg-black transition-colors rounded-none shadow-[0_0_4px_#00FFFF]" />
-            <span className="w-3.5 h-[2px] bg-neonCyan group-hover:bg-black dark:group-hover:bg-black transition-colors rounded-none shadow-[0_0_4px_#00FFFF]" />
-          </div>
-
-          {/* Vertical Tactile Label */}
-          <span className="font-mono text-[7px] font-black uppercase tracking-tighter [writing-mode:vertical-lr] text-slate-400 group-hover:text-black transition-colors select-none">
-            {sidebarOpen ? 'ZÁR' : 'NYIT'}
-          </span>
-        </button>
+      <div className="relative flex min-w-0 items-start">
 
         {/* ───────────────────────────────────────────────────────────── */}
         {/* 1. BAL SÁV: FASTUKTÚRA & GYORSKERESŐ                           */}
         {/* ───────────────────────────────────────────────────────────── */}
         <aside
+          id="vault-folder-sidebar"
+          data-testid="vault-folder-sidebar"
+          aria-label="Mappák és szűrők"
+          aria-hidden={!sidebarOpen}
           className={`
-            ${sidebarOpen ? 'w-72 sm:w-84' : 'w-0 overflow-hidden'}
+            ${sidebarOpen
+              ? 'w-72 sm:w-84 overflow-y-auto overscroll-contain xl:overflow-visible'
+              : 'w-0 overflow-hidden invisible pointer-events-none'}
             shrink-0 border-r-2 dark:border-white/10 border-slate-900 dark:bg-[#070b19] bg-slate-50
             flex flex-col transition-all duration-300
-            fixed xl:sticky top-[8.5rem] bottom-0 left-0 z-20 xl:z-auto
-            ${sidebarOpen ? 'xl:flex' : ''}
+            fixed top-[8.5rem] bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 z-20
+            xl:sticky xl:top-[8.5rem] xl:bottom-auto xl:left-auto xl:z-auto xl:self-start
           `}
         >
           {/* Hub Button & Folder Navigator Header in Sidebar */}
           <div className="p-3 border-b-2 dark:border-white/10 border-slate-900 dark:bg-black/40 bg-white space-y-3">
+            <div className="flex items-center justify-between gap-3 border-b dark:border-white/10 border-slate-200 pb-2.5 font-mono">
+              <div className="min-w-0 flex items-center gap-2">
+                <FolderOpen size={15} className="shrink-0 text-neonCyan" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-black uppercase tracking-wider text-slate-900 dark:text-white">Mappák és szűrők</p>
+                  <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Fastruktúra és gyűjtemények</p>
+                </div>
+              </div>
+              <span className="shrink-0 border border-neonCyan/40 bg-neonCyan/10 px-1.5 py-0.5 text-[9px] font-black text-cyan-800 dark:text-neonCyan">
+                {categoryEntries.length} MAPPA
+              </span>
+            </div>
+
             <button
               onClick={closeDocToHub}
               className={`w-full flex items-center justify-center gap-2 p-2.5 font-headline font-black text-xs uppercase tracking-wider border-2 transition-all cursor-pointer ${
@@ -1399,7 +1473,7 @@ const TacticalVaultExplorer = ({
           </div>
 
           {/* Folder Tree Navigation with Fluid Animation */}
-          <nav className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin">
+          <nav className="p-3 space-y-3">
             <AnimatePresence mode="popLayout">
               {/* Taktikai '..' Visszalépés a Gyökérmappába */}
               {selectedCategory !== 'ALL' && (
@@ -1410,7 +1484,10 @@ const TacticalVaultExplorer = ({
                   animate={{ opacity: 1, height: 'auto', y: 0 }}
                   exit={{ opacity: 0, height: 0, y: -10 }}
                   transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
-                  onClick={() => setSelectedCategory('ALL')}
+                  onClick={() => {
+                    setSelectedCategory('ALL');
+                    closeMobileSidebar();
+                  }}
                   className="w-full flex items-center justify-between px-3 py-2 text-left border-2 border-dashed dark:border-neonCyan/50 border-cyan-700 dark:bg-neonCyan/10 bg-cyan-50 font-mono text-xs font-bold text-cyan-900 dark:text-neonCyan hover:bg-neonCyan hover:text-black mb-3 cursor-pointer shadow-[2px_2px_0_#0f172a] group overflow-hidden"
                   title="Visszalépés a szülőkönyvtárhoz (Összes mappa mutatása)"
                 >
@@ -1422,10 +1499,12 @@ const TacticalVaultExplorer = ({
                 </motion.button>
               )}
 
-              {Object.entries(categoriesGroup)
-                .filter(([category]) => selectedCategory === 'ALL' || selectedCategory === category)
-                .map(([category, catItems]) => {
+              {visibleCategoryEntries.map(([category, catItems], categoryIndex) => {
                   const isCollapsed = selectedCategory === category ? false : (collapsedFolders[category] !== false);
+                  const visibleItemCount = visibleFolderItems[category] ?? INITIAL_VISIBLE_FOLDER_ITEMS;
+                  const visibleItems = catItems.slice(0, visibleItemCount);
+                  const remainingItems = Math.max(catItems.length - visibleItems.length, 0);
+                  const folderListId = `vault-folder-items-${categoryIndex}`;
                   return (
                     <motion.div
                       key={category}
@@ -1436,35 +1515,46 @@ const TacticalVaultExplorer = ({
                       transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
                       className="border-2 dark:border-white/10 border-slate-900 dark:bg-slate-900/40 bg-white shadow-[2px_2px_0_#0f172a] dark:shadow-none overflow-hidden"
                     >
-                      {/* Category Folder Header / Kattintásra Szűrőként funkcionál */}
+                      {/* Category Folder Header: explicit selection and separate disclosure controls. */}
                       <div
-                        onClick={() => handleSelectFolder(category)}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 border-b dark:border-white/10 border-slate-300 transition-all text-left cursor-pointer select-none group ${
+                        className={`w-full flex items-center justify-between px-3 py-2.5 border-b dark:border-white/10 border-slate-300 transition-all text-left select-none group ${
                           selectedCategory === category
                             ? 'bg-neonCyan/20 border-neonCyan text-white shadow-[inset_4px_0_0_#00FFFF]'
                             : 'dark:bg-slate-800/80 bg-slate-200/90 hover:bg-neonCyan/10 dark:hover:bg-neonCyan/10 text-slate-900 dark:text-white'
                         }`}
                       >
-                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => handleSelectFolder(category)}
+                          data-testid="folder-category"
+                          data-category={category}
+                          aria-current={selectedCategory === category ? 'page' : undefined}
+                          title={`${category} mappa kiválasztása`}
+                          className="flex min-w-0 flex-1 items-center gap-2.5 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neonCyan"
+                        >
                           {isCollapsed ? (
-                            <Folder size={15} className={`${selectedCategory === category ? 'text-neonCyan' : 'text-neonMagenta'} drop-shadow-[0_0_8px_#FF00FF] shrink-0`} />
+                            <Folder size={15} aria-hidden="true" className={`${selectedCategory === category ? 'text-neonCyan' : 'text-neonMagenta'} drop-shadow-[0_0_8px_#FF00FF] shrink-0`} />
                           ) : (
-                            <FolderOpen size={15} className="text-neonCyan drop-shadow-[0_0_8px_#00FFFF] shrink-0" />
+                            <FolderOpen size={15} aria-hidden="true" className="text-neonCyan drop-shadow-[0_0_8px_#00FFFF] shrink-0" />
                           )}
                           <span className={`font-headline font-black text-xs uppercase tracking-wider transition-colors truncate ${
                             selectedCategory === category ? 'text-neonCyan' : 'group-hover:text-neonCyan'
                           }`}>
                             {category}
                           </span>
-                        </div>
+                        </button>
 
                         <div className="flex items-center gap-1.5 shrink-0 ml-2">
                           <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 bg-black/10 dark:bg-black/60 border dark:border-neonCyan/30 border-slate-400 text-slate-800 dark:text-neonCyan">
                             {catItems.length}
                           </span>
                           <button
+                            type="button"
                             onClick={(e) => toggleFolder(category, e)}
-                            className="p-1 hover:text-neonCyan text-slate-500 cursor-pointer"
+                            aria-controls={folderListId}
+                            aria-expanded={!isCollapsed}
+                            aria-label={isCollapsed ? `${category} mappa kinyitása` : `${category} mappa összecsukása`}
+                            className="p-1 hover:text-neonCyan text-slate-500 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neonCyan"
                             title={isCollapsed ? 'Mappa kinyitása' : 'Mappa összecsukása'}
                           >
                             {isCollapsed ? (
@@ -1480,13 +1570,16 @@ const TacticalVaultExplorer = ({
                       <AnimatePresence>
                         {!isCollapsed && (
                           <motion.div
+                            id={folderListId}
+                            role="region"
+                            aria-label={`${category} dokumentumok`}
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
                             transition={{ duration: 0.25, ease: 'easeInOut' }}
                             className="overflow-hidden py-1 dark:bg-black/30 bg-white space-y-0.5"
                           >
-                            {catItems.map((item) => {
+                            {visibleItems.map((item) => {
                               const isActive = activeDoc?.slug === item.slug;
                               return (
                                 <button
@@ -1529,12 +1622,50 @@ const TacticalVaultExplorer = ({
                                 </button>
                               );
                             })}
+
+                            {remainingItems > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setVisibleFolderItems((prev) => ({
+                                  ...prev,
+                                  [category]: Math.min(
+                                    catItems.length,
+                                    (prev[category] ?? INITIAL_VISIBLE_FOLDER_ITEMS) + FOLDER_ITEMS_PAGE_SIZE
+                                  )
+                                }))}
+                                data-testid="folder-load-more"
+                                data-category={category}
+                                className="mx-2 my-2 flex w-[calc(100%-1rem)] items-center justify-between gap-2 border border-dashed border-cyan-700 dark:border-neonCyan/60 bg-cyan-50 px-2.5 py-2 text-left font-mono text-[10px] font-black uppercase text-cyan-900 transition-colors hover:bg-neonCyan hover:text-black dark:bg-neonCyan/10 dark:text-neonCyan cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neonCyan"
+                                aria-label={`${Math.min(FOLDER_ITEMS_PAGE_SIZE, remainingItems)} további dokumentum megjelenítése a(z) ${category} mappából`}
+                              >
+                                <span>+ {Math.min(FOLDER_ITEMS_PAGE_SIZE, remainingItems)} további elem</span>
+                                <span className="shrink-0 text-[9px] opacity-75">{remainingItems} hátra</span>
+                              </button>
+                            )}
                           </motion.div>
                         )}
                       </AnimatePresence>
                     </motion.div>
                   );
                 })}
+
+              {remainingFolderCategories > 0 && (
+                <motion.button
+                  key="folder-category-load-more"
+                  type="button"
+                  layout
+                  onClick={() => setVisibleFolderCount((count) => Math.min(
+                    categoryEntries.length,
+                    count + FOLDERS_PAGE_SIZE
+                  ))}
+                  className="flex w-full items-center justify-between gap-2 border-2 border-dashed border-cyan-700 dark:border-neonCyan/60 bg-cyan-50 px-3 py-2.5 text-left font-mono text-[10px] font-black uppercase text-cyan-900 transition-colors hover:bg-neonCyan hover:text-black dark:bg-neonCyan/10 dark:text-neonCyan cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neonCyan"
+                  data-testid="folder-category-load-more"
+                  aria-label={`${Math.min(FOLDERS_PAGE_SIZE, remainingFolderCategories)} további mappa megjelenítése`}
+                >
+                  <span>+ {Math.min(FOLDERS_PAGE_SIZE, remainingFolderCategories)} további mappa</span>
+                  <span className="shrink-0 text-[9px] opacity-75">{remainingFolderCategories} hátra</span>
+                </motion.button>
+              )}
             </AnimatePresence>
 
             {displayDocs.length === 0 && (
@@ -1563,7 +1694,7 @@ const TacticalVaultExplorer = ({
         {/* ───────────────────────────────────────────────────────────── */}
         {/* 2. KÖZÉPSŐ FŐ TÉR: DOKUMENTUM OLVASÓ VAGY BEMUTATÓ HUB       */}
         {/* ───────────────────────────────────────────────────────────── */}
-        <main className="flex-1 min-w-0 overflow-y-auto" id="vault-main-content">
+        <div className="flex-1 min-w-0 overflow-visible" id="vault-main-content">
           
           {/* ══════════════════════════════════════════════════════════ */}
           {/* NÉZET A: CIKK OLVASÓ NÉZET (ACTIVE DOC)                     */}
@@ -1714,7 +1845,7 @@ const TacticalVaultExplorer = ({
                   &lt;-- VISSZA A {vaultType === 'blog' ? 'BLOG HUB-RA' : 'TUDÁSTÁR HUB-RA'}
                 </button>
                 <button
-                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  onClick={() => window.scrollTo({ top: 0, behavior: preferredScrollBehavior() })}
                   className="text-neonCyan hover:text-white uppercase cursor-pointer font-bold flex items-center gap-1"
                 >
                   <span>UGRÁS A TETEJÉRE</span>
@@ -1755,7 +1886,9 @@ const TacticalVaultExplorer = ({
                     ) : (
                       <Search size={18} className="text-neonCyan shrink-0 drop-shadow-[0_0_6px_#00FFFF]" />
                     )}
+                    <label htmlFor={`vault-search-${vaultType}`} className="sr-only">Intelligens RAG kereső</label>
                     <input
+                      id={`vault-search-${vaultType}`}
                       type="text"
                       placeholder="INTELLIGENS RAG KERESŐ (SZÖVEG, KIFEJEZÉS, KÓD, TÉMAKÖR)..."
                       value={searchQuery}
@@ -1778,8 +1911,8 @@ const TacticalVaultExplorer = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t dark:border-white/10 border-slate-200">
                   {/* Industry Selector */}
                   <div>
-                    <label className="text-[10px] text-neonCyan font-bold flex items-center justify-between mb-1">
-                      <span>🏭 IPARÁG</span>
+                    <div className="text-[10px] text-neonCyan font-bold flex items-center justify-between mb-1">
+                      <label htmlFor={`vault-industry-${vaultType}`}>🏭 IPARÁG</label>
                       {selectedIparag !== 'ALL' && (
                         <button
                           type="button"
@@ -1789,8 +1922,9 @@ const TacticalVaultExplorer = ({
                           ÖSSZES ✕
                         </button>
                       )}
-                    </label>
+                    </div>
                     <select
+                      id={`vault-industry-${vaultType}`}
                       value={selectedIparag}
                       onChange={(e) => setSelectedIparag(e.target.value)}
                       className={`w-full p-2 text-xs font-mono uppercase cursor-pointer border transition-all ${
@@ -1810,8 +1944,8 @@ const TacticalVaultExplorer = ({
 
                   {/* Technology Selector */}
                   <div>
-                    <label className="text-[10px] text-neonCyan font-bold flex items-center justify-between mb-1">
-                      <span>⚡ TECHNOLÓGIA</span>
+                    <div className="text-[10px] text-neonCyan font-bold flex items-center justify-between mb-1">
+                      <label htmlFor={`vault-technology-${vaultType}`}>⚡ TECHNOLÓGIA</label>
                       {selectedTech !== 'ALL' && (
                         <button
                           type="button"
@@ -1821,8 +1955,9 @@ const TacticalVaultExplorer = ({
                           ÖSSZES ✕
                         </button>
                       )}
-                    </label>
+                    </div>
                     <select
+                      id={`vault-technology-${vaultType}`}
                       value={selectedTech}
                       onChange={(e) => setSelectedTech(e.target.value)}
                       className={`w-full p-2 text-xs font-mono uppercase cursor-pointer border transition-all ${
@@ -1842,8 +1977,8 @@ const TacticalVaultExplorer = ({
 
                   {/* Target Audience / Role Selector */}
                   <div>
-                    <label className="text-[10px] text-neonMagenta font-bold flex items-center justify-between mb-1">
-                      <span>🎯 CÉLCSOPORT / SZEREPKÖR</span>
+                    <div className="text-[10px] text-neonMagenta font-bold flex items-center justify-between mb-1">
+                      <label htmlFor={`vault-audience-${vaultType}`}>🎯 CÉLCSOPORT / SZEREPKÖR</label>
                       {selectedCelcsoport !== 'ALL' && (
                         <button
                           type="button"
@@ -1853,8 +1988,9 @@ const TacticalVaultExplorer = ({
                           ÖSSZES ✕
                         </button>
                       )}
-                    </label>
+                    </div>
                     <select
+                      id={`vault-audience-${vaultType}`}
                       value={selectedCelcsoport}
                       onChange={(e) => setSelectedCelcsoport(e.target.value)}
                       className={`w-full p-2 text-xs font-mono uppercase cursor-pointer border transition-all ${
@@ -1874,8 +2010,9 @@ const TacticalVaultExplorer = ({
 
                   {/* Sorting Selector */}
                   <div>
-                    <label className="text-[10px] text-plasmaGreen font-bold block mb-1">RENDEZÉS</label>
+                    <label htmlFor={`vault-sort-${vaultType}`} className="text-[10px] text-plasmaGreen font-bold block mb-1">RENDEZÉS</label>
                     <select
+                      id={`vault-sort-${vaultType}`}
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
                       className="w-full dark:bg-slate-900 bg-slate-50 border-2 dark:border-plasmaGreen/50 border-emerald-600 p-2 text-xs font-mono font-bold uppercase dark:text-plasmaGreen text-emerald-800 cursor-pointer"
@@ -1904,7 +2041,7 @@ const TacticalVaultExplorer = ({
                     </div>
                   ) : (
                     <div className="text-slate-500 font-bold flex items-center gap-2">
-                      <span>MUTATVA: <strong className="text-neonCyan">{displayDocs.length}</strong> / {docs.length} TÉTEL</span>
+                      <span>MUTATVA: <strong className="text-neonCyan">{visibleHubDocs.length}</strong> / {displayDocs.length} TÉTEL</span>
                     </div>
                   )}
 
@@ -1947,11 +2084,11 @@ const TacticalVaultExplorer = ({
 
 
               {/* Matrix Cards View with Fluid Animations */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6" data-testid="vault-results">
 
 
                 <AnimatePresence mode="popLayout">
-                  {displayDocs.map((item) => (
+                  {visibleHubDocs.map((item) => (
                     <motion.div
                       key={item.id || item.slug}
                       layout
@@ -1960,6 +2097,16 @@ const TacticalVaultExplorer = ({
                       exit={{ opacity: 0, scale: 0.88, y: -10 }}
                       transition={{ duration: 0.25, ease: 'easeOut' }}
                       onClick={() => loadDoc(item)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          loadDoc(item);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${item.title} megnyitása`}
+                      data-testid="vault-result-card"
                       className="group p-6 bg-[var(--surface-panel)] border-2 dark:border-white/10 border-slate-900 hover:border-neonCyan/80 transition-all duration-200 flex flex-col justify-between shadow-[4px_4px_0_#0f172a] dark:shadow-none hover:shadow-[-5px_0_20px_rgba(0,255,255,0.2)] rounded-none cursor-pointer"
                     >
                       <div>
@@ -2074,6 +2221,28 @@ const TacticalVaultExplorer = ({
                 </AnimatePresence>
               </div>
 
+              {remainingHubResults > 0 && (
+                <div className="mt-8 flex flex-col items-center gap-3 border-y border-slate-300 py-5 text-center font-mono dark:border-white/10">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {visibleHubDocs.length} / {displayDocs.length} tétel megjelenítve
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setVisibleHubResultCount((count) => Math.min(
+                      displayDocs.length,
+                      count + HUB_RESULTS_PAGE_SIZE
+                    ))}
+                    data-testid="vault-results-load-more"
+                    className="flex items-center justify-center gap-2 border-2 border-cyan-800 bg-cyan-100 px-4 py-2.5 font-headline text-xs font-black uppercase tracking-wider text-cyan-950 shadow-[3px_3px_0_#0f172a] transition-colors hover:bg-neonCyan hover:text-black dark:border-neonCyan dark:bg-neonCyan/10 dark:text-neonCyan dark:shadow-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neonCyan"
+                    aria-label={`${Math.min(HUB_RESULTS_PAGE_SIZE, remainingHubResults)} további találat megjelenítése`}
+                  >
+                    <ChevronDown size={15} aria-hidden="true" />
+                    <span>+ {Math.min(HUB_RESULTS_PAGE_SIZE, remainingHubResults)} további tétel</span>
+                    <span className="text-[10px] opacity-75">({remainingHubResults} hátra)</span>
+                  </button>
+                </div>
+              )}
+
               {displayDocs.length === 0 && (
                 <div className="p-16 text-center border-2 dark:border-white/10 border-slate-900 bg-[var(--surface-panel)] font-mono">
                   <span className="material-symbols-outlined text-4xl text-neonMagenta mb-3 block">search_off</span>
@@ -2091,13 +2260,13 @@ const TacticalVaultExplorer = ({
               )}
             </div>
           )}
-        </main>
+        </div>
 
         {/* ───────────────────────────────────────────────────────────── */}
         {/* 3. JOBB: Tartalomjegyzék (TOC), Backlinks & Knowledge Graph  */}
         {/* ───────────────────────────────────────────────────────────── */}
         {activeDoc && (
-          <div className="w-72 shrink-0 hidden xl:flex flex-col gap-6 overflow-y-auto px-4 py-8 border-l-2 dark:border-white/10 border-slate-900 dark:bg-[#070b19]/80 bg-slate-50 font-mono">
+          <div className="w-72 shrink-0 hidden xl:flex xl:self-start xl:sticky xl:top-[8.5rem] flex-col gap-6 overflow-visible px-4 py-8 border-l-2 dark:border-white/10 border-slate-900 dark:bg-[#070b19]/80 bg-slate-50 font-mono">
             <TableOfContents headings={headings} />
 
             {/* Bi-Directional Backlinks & Semantic Mesh */}

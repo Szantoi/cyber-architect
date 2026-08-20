@@ -1,27 +1,32 @@
-const CACHE_NAME = 'cyber-architect-v2';
+const CACHE_PREFIX = 'cyber-architect-';
+const CACHE_NAME = `${CACHE_PREFIX}v3`;
 const STATIC_ASSETS = [
-  '/',
   '/index.html',
   '/manifest.json',
   '/favicon.svg'
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('[SW_INSTALL_NOTE] Static precache partial:', err);
-      });
-    })
-  );
-  self.skipWaiting();
+  const precache = caches.open(CACHE_NAME).then((cache) => {
+    return Promise.all(STATIC_ASSETS.map(async (asset) => {
+      try {
+        await cache.add(asset);
+      } catch (error) {
+        console.warn(`[SW_INSTALL_NOTE] Failed to precache ${asset}:`, error);
+      }
+    }));
+  });
+
+  event.waitUntil(Promise.all([precache, self.skipWaiting()]));
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys
+          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
       );
     })
   );
@@ -29,15 +34,15 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = event.request.url;
+  const requestUrl = new URL(event.request.url);
 
-  // 1. Strictly ignore non-http(s) schemes (e.g. chrome-extension://, moz-extension://, data:)
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+  // Only this application's same-origin responses belong in its cache.
+  if (!['http:', 'https:'].includes(requestUrl.protocol) || requestUrl.origin !== self.location.origin) {
     return;
   }
 
   // 2. Skip non-GET requests and API/SSE endpoints
-  if (event.request.method !== 'GET' || url.includes('/api/')) {
+  if (event.request.method !== 'GET' || requestUrl.pathname.startsWith('/api/')) {
     return;
   }
 
@@ -45,10 +50,12 @@ self.addEventListener('fetch', (event) => {
   if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
       fetch(event.request)
-        .then((networkResponse) => {
+        .then(async (networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
-            const responseClone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+            // All client-side routes use the same SPA shell. Keeping a single
+            // entry prevents unbounded cache growth as users navigate.
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put('/index.html', networkResponse.clone());
           }
           return networkResponse;
         })

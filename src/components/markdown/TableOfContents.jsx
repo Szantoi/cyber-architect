@@ -17,8 +17,6 @@ const TableOfContents = ({ headings = [] }) => {
   useEffect(() => {
     if (!headings.length) return;
 
-    const mainContainer = document.querySelector('main') || null;
-
     const handleIntersect = (entries) => {
       const visible = entries
         .filter((e) => e.isIntersecting)
@@ -29,7 +27,9 @@ const TableOfContents = ({ headings = [] }) => {
     };
 
     observerRef.current = new IntersectionObserver(handleIntersect, {
-      root: mainContainer,
+      // The document is the single vertical scroll owner. Using an inner
+      // application panel here makes the active section lag behind the page.
+      root: null,
       rootMargin: '-5% 0% -60% 0%',
       threshold: 0.1,
     });
@@ -57,9 +57,7 @@ const TableOfContents = ({ headings = [] }) => {
   const scrollToHeading = (id, text) => {
     setActiveId(id);
 
-    const mainContainer = document.querySelector('main');
-    const searchRoot = mainContainer || document;
-    const allHeadings = Array.from(searchRoot.querySelectorAll('h1, h2, h3, h4, h5'));
+    const allHeadings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5'));
 
     // 1. Keresés közvetlen ID alapján
     let targetEl = document.getElementById(id);
@@ -82,24 +80,11 @@ const TableOfContents = ({ headings = [] }) => {
     }
 
     if (targetEl) {
-      const mainContainer = document.querySelector('main');
-      if (mainContainer && mainContainer.scrollHeight > mainContainer.clientHeight) {
-        // Belső görgetés esetén: az elem relatív távolsága a tárolóban - 48px felső védőtávolság
-        const containerTop = mainContainer.getBoundingClientRect().top;
-        const elTop = targetEl.getBoundingClientRect().top;
-        const currentScroll = mainContainer.scrollTop;
-        const finalScrollTop = elTop - containerTop + currentScroll - 48;
-
-        mainContainer.scrollTo({
-          top: Math.max(0, finalScrollTop),
-          behavior: 'smooth'
-        });
-      } else {
-        // Teljes ablak görgetés esetén
-        const yOffset = -140; // 140px a Navbar + Header Bar számára
-        const y = targetEl.getBoundingClientRect().top + window.pageYOffset + yOffset;
-        window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
-      }
+      // The fixed global navigation and vault header together occupy roughly
+      // 140px; keep the selected heading visible below them.
+      const yOffset = -140;
+      const y = targetEl.getBoundingClientRect().top + window.pageYOffset + yOffset;
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
 
       // Cyber-Flash felvillanás
       targetEl.classList.add('transition-all', 'duration-300', 'bg-neonCyan/20', 'border-l-4', 'border-neonCyan', 'px-3');
@@ -110,10 +95,6 @@ const TableOfContents = ({ headings = [] }) => {
   };
 
   const scrollToTop = () => {
-    const mainContainer = document.querySelector('main');
-    if (mainContainer) {
-      mainContainer.scrollTo({ top: 0, behavior: 'smooth' });
-    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

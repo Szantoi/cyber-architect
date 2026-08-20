@@ -28,6 +28,148 @@ export const db = new Database(dbPath);
 // Enable WAL mode for high concurrent performance
 db.pragma('journal_mode = WAL');
 
+const BLOG_POSTS_FTS_MIGRATION = 'blog_posts_fts';
+const BLOG_POSTS_FTS_VERSION = 1;
+const BLOG_POSTS_FTS_COLUMNS = [
+  'title',
+  'summary',
+  'content',
+  'category',
+  'content_type',
+  'dimensions'
+];
+
+const BLOG_POSTS_FTS_TABLE_SQL = `
+  CREATE VIRTUAL TABLE blog_posts_fts USING fts5(
+    title,
+    summary,
+    content,
+    category,
+    content_type,
+    dimensions,
+    tokenize='unicode61'
+  )
+`;
+
+const BLOG_POSTS_FTS_TRIGGER_SQL = {
+  blog_posts_ai: `
+    CREATE TRIGGER blog_posts_ai AFTER INSERT ON blog_posts BEGIN
+      INSERT INTO blog_posts_fts(rowid, title, summary, content, category, content_type, dimensions)
+      VALUES (new.id, new.title, new.summary, new.content, new.category, new.content_type, new.dimensions);
+    END
+  `,
+  blog_posts_ad: `
+    CREATE TRIGGER blog_posts_ad AFTER DELETE ON blog_posts BEGIN
+      DELETE FROM blog_posts_fts WHERE rowid = old.id;
+    END
+  `,
+  blog_posts_au: `
+    CREATE TRIGGER blog_posts_au AFTER UPDATE ON blog_posts BEGIN
+      DELETE FROM blog_posts_fts WHERE rowid = old.id;
+      INSERT INTO blog_posts_fts(rowid, title, summary, content, category, content_type, dimensions)
+      VALUES (new.id, new.title, new.summary, new.content, new.category, new.content_type, new.dimensions);
+    END
+  `
+};
+
+function normalizeSchemaSql(sql) {
+  return String(sql || '')
+    .trim()
+    .replace(/;$/, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function hasCurrentBlogPostsFtsSchema() {
+  const table = db.prepare(`
+    SELECT sql
+    FROM sqlite_schema
+    WHERE type = 'table' AND name = 'blog_posts_fts'
+  `).get();
+
+  if (normalizeSchemaSql(table?.sql) !== normalizeSchemaSql(BLOG_POSTS_FTS_TABLE_SQL)) {
+    return false;
+  }
+
+  const columns = db.prepare('PRAGMA table_info(blog_posts_fts)').all().map(column => column.name);
+  if (columns.length !== BLOG_POSTS_FTS_COLUMNS.length
+      || columns.some((column, index) => column !== BLOG_POSTS_FTS_COLUMNS[index])) {
+    return false;
+  }
+
+  const triggers = new Map(db.prepare(`
+    SELECT name, sql
+    FROM sqlite_schema
+    WHERE type = 'trigger'
+      AND name IN ('blog_posts_ai', 'blog_posts_ad', 'blog_posts_au')
+  `).all().map(trigger => [trigger.name, normalizeSchemaSql(trigger.sql)]));
+
+  return Object.entries(BLOG_POSTS_FTS_TRIGGER_SQL).every(([name, sql]) => (
+    triggers.get(name) === normalizeSchemaSql(sql)
+  ));
+}
+
+function ensureBlogPostsFtsSchema() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      component TEXT PRIMARY KEY,
+      version INTEGER NOT NULL CHECK (version > 0),
+      applied_at TEXT NOT NULL
+    );
+  `);
+
+  const appliedMigration = db.prepare(`
+    SELECT version
+    FROM schema_migrations
+    WHERE component = ?
+  `).get(BLOG_POSTS_FTS_MIGRATION);
+
+  if (appliedMigration?.version > BLOG_POSTS_FTS_VERSION) {
+    throw new Error(
+      `[DB_MIGRATION] Unsupported ${BLOG_POSTS_FTS_MIGRATION} schema version: ${appliedMigration.version}`
+    );
+  }
+
+  if (appliedMigration?.version === BLOG_POSTS_FTS_VERSION && hasCurrentBlogPostsFtsSchema()) {
+    return;
+  }
+
+  const migrate = db.transaction(() => {
+    db.exec(`
+      DROP TRIGGER IF EXISTS blog_posts_ai;
+      DROP TRIGGER IF EXISTS blog_posts_ad;
+      DROP TRIGGER IF EXISTS blog_posts_au;
+      DROP TABLE IF EXISTS blog_posts_fts;
+
+      ${BLOG_POSTS_FTS_TABLE_SQL};
+      ${BLOG_POSTS_FTS_TRIGGER_SQL.blog_posts_ai};
+      ${BLOG_POSTS_FTS_TRIGGER_SQL.blog_posts_ad};
+      ${BLOG_POSTS_FTS_TRIGGER_SQL.blog_posts_au};
+
+      INSERT INTO blog_posts_fts(rowid, title, summary, content, category, content_type, dimensions)
+      SELECT id, title, summary, content, category, content_type, dimensions
+      FROM blog_posts;
+    `);
+
+    db.prepare(`
+      INSERT INTO schema_migrations (component, version, applied_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(component) DO UPDATE SET
+        version = excluded.version,
+        applied_at = excluded.applied_at
+    `).run(BLOG_POSTS_FTS_MIGRATION, BLOG_POSTS_FTS_VERSION, new Date().toISOString());
+  });
+
+  try {
+    migrate();
+  } catch (error) {
+    throw new Error(
+      `[DB_MIGRATION] Failed to migrate ${BLOG_POSTS_FTS_MIGRATION} to version ${BLOG_POSTS_FTS_VERSION}`,
+      { cause: error }
+    );
+  }
+}
+
 export function initDatabase() {
   // 1. Settings Table
   db.exec(`
@@ -137,48 +279,8 @@ export function initDatabase() {
   `);
 
   // 6. SQLite FTS5 Full-Text Search Virtual Table
-  try {
-    // Drop old triggers/tables if structure changed
-    db.exec(`
-      DROP TRIGGER IF EXISTS blog_posts_ai;
-      DROP TRIGGER IF EXISTS blog_posts_ad;
-      DROP TRIGGER IF EXISTS blog_posts_au;
-      DROP TABLE IF EXISTS blog_posts_fts;
-
-      CREATE VIRTUAL TABLE blog_posts_fts USING fts5(
-        title,
-        summary,
-        content,
-        category,
-        content_type,
-        dimensions,
-        tokenize='unicode61'
-      );
-
-      CREATE TRIGGER blog_posts_ai AFTER INSERT ON blog_posts BEGIN
-        INSERT INTO blog_posts_fts(rowid, title, summary, content, category, content_type, dimensions)
-        VALUES (new.id, new.title, new.summary, new.content, new.category, new.content_type, new.dimensions);
-      END;
-
-      CREATE TRIGGER blog_posts_ad AFTER DELETE ON blog_posts BEGIN
-        DELETE FROM blog_posts_fts WHERE rowid = old.id;
-      END;
-
-      CREATE TRIGGER blog_posts_au AFTER UPDATE ON blog_posts BEGIN
-        DELETE FROM blog_posts_fts WHERE rowid = old.id;
-        INSERT INTO blog_posts_fts(rowid, title, summary, content, category, content_type, dimensions)
-        VALUES (new.id, new.title, new.summary, new.content, new.category, new.content_type, new.dimensions);
-      END;
-    `);
-
-    // Re-populate FTS5 index from existing blog_posts
-    db.exec(`
-      INSERT INTO blog_posts_fts(rowid, title, summary, content, category, content_type, dimensions)
-      SELECT id, title, summary, content, category, content_type, dimensions FROM blog_posts;
-    `);
-  } catch (ftsErr) {
-    console.warn('[DB_WARN] FTS5 Virtual Table setup note:', ftsErr.message);
-  }
+  // Rebuild only for an unapplied version or when the recorded schema is damaged.
+  ensureBlogPostsFtsSchema();
 
   // 7. Messages Table (Uplink)
   db.exec(`

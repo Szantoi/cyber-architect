@@ -13,7 +13,7 @@ const TransmitButton = () => {
       className={`dark:bg-neonCyan bg-cyan-700 text-white dark:text-black px-12 py-4 font-black italic transition-all duration-200 flex items-center gap-3 rounded-none border-2 border-slate-950 shadow-[4px_4px_0_#0f172a] hover:bg-slate-950 hover:text-cyan-300 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none uppercase ${pending ? 'opacity-50 cursor-wait' : ''}`}
     >
       {pending ? 'KÜLDÉS FOLYAMATBAN...' : 'ÜZENET KÜLDÉSE'}
-      <span className={`material-symbols-outlined shrink-0 text-xl font-bold ${pending ? 'animate-spin' : ''}`}>
+      <span aria-hidden="true" className={`material-symbols-outlined shrink-0 text-xl font-bold ${pending ? 'animate-spin' : ''}`}>
         {pending ? 'sync' : 'send'}
       </span>
     </button>
@@ -61,7 +61,7 @@ const Uplink = () => {
       <div className="container mx-auto px-6 relative z-10">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="max-w-full break-words text-5xl sm:text-6xl md:text-8xl font-headline font-black italic uppercase text-on-surface glitch-text">
+            <h2 id="uplink-title" className="max-w-full break-words text-5xl sm:text-6xl md:text-8xl font-headline font-black italic uppercase text-on-surface glitch-text">
               {title}
             </h2>
             <p className="max-w-full break-words font-mono text-secondary-fixed mt-4 tracking-[0.12em] sm:tracking-widest uppercase">
@@ -69,7 +69,12 @@ const Uplink = () => {
             </p>
           </div>
           
-          <form action={formAction} className="bg-[var(--surface-panel)] p-5 sm:p-8 md:p-12 border-2 dark:border-white/10 border-slate-900 rounded-none relative group shadow-[6px_6px_0_#0f172a] dark:shadow-none">
+          <form
+            action={formAction}
+            aria-labelledby="uplink-title"
+            aria-describedby={state?.message ? 'uplink-status' : undefined}
+            className="bg-[var(--surface-panel)] p-5 sm:p-8 md:p-12 border-2 dark:border-white/10 border-slate-900 rounded-none relative group shadow-[6px_6px_0_#0f172a] dark:shadow-none"
+          >
             <div className="absolute top-0 right-0 w-8 h-8 bg-secondary-fixed"></div>
             
             {/* Honeypot Trap field for spam bots (invisible to real humans) */}
@@ -87,8 +92,9 @@ const Uplink = () => {
 
             <div className="space-y-8 font-mono">
               <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4 relative">
-                <span className="self-start dark:text-slate-500 text-slate-900 sm:shrink-0 font-black">NÉV_ÉS_EMAIL:~$</span>
+                <label htmlFor="uplink-identity" className="self-start dark:text-slate-500 text-slate-900 sm:shrink-0 font-black">NÉV_ÉS_EMAIL:~$</label>
                 <input 
+                  id="uplink-identity"
                   name="identity"
                   maxLength={120}
                   className="min-w-0 bg-transparent border-b-2 dark:border-white/10 border-slate-900 focus:border-cyan-600 focus:ring-0 text-on-surface dark:placeholder:text-slate-600 placeholder:text-slate-500 w-full font-mono py-2 outline-none transition-all duration-300 peer font-bold"
@@ -98,8 +104,9 @@ const Uplink = () => {
                 />
               </div>
               <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4 relative">
-                <span className="self-start dark:text-slate-500 text-slate-900 sm:shrink-0 font-black">TÉMA:~$</span>
+                <label htmlFor="uplink-subject" className="self-start dark:text-slate-500 text-slate-900 sm:shrink-0 font-black">TÉMA:~$</label>
                 <input 
+                  id="uplink-subject"
                   name="subject"
                   maxLength={120}
                   className="min-w-0 bg-transparent border-b-2 dark:border-white/10 border-slate-900 focus:border-cyan-600 focus:ring-0 text-on-surface dark:placeholder:text-slate-600 placeholder:text-slate-500 w-full font-mono py-2 outline-none transition-all duration-300 peer font-bold"
@@ -109,8 +116,9 @@ const Uplink = () => {
                 />
               </div>
               <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-start sm:gap-4 relative">
-                <span className="self-start dark:text-slate-500 text-slate-900 sm:shrink-0 sm:pt-2 font-black">ÜZENET:~$</span>
+                <label htmlFor="uplink-message" className="self-start dark:text-slate-500 text-slate-900 sm:shrink-0 sm:pt-2 font-black">ÜZENET:~$</label>
                 <textarea 
+                  id="uplink-message"
                   name="message"
                   rows={4}
                   maxLength={1000}
@@ -120,7 +128,13 @@ const Uplink = () => {
               </div>
 
               {state?.message && (
-                <div className="font-mono text-xs">
+                <div
+                  id="uplink-status"
+                  role={state.success ? 'status' : 'alert'}
+                  aria-live={state.success ? 'polite' : 'assertive'}
+                  aria-atomic="true"
+                  className="font-mono text-xs"
+                >
                   <span className={state.success ? 'text-tertiary font-bold' : 'text-neonMagenta animate-pulse font-bold'}>
                     [{state.success ? 'SIKERES' : 'HIBA'}] {state.message}
                   </span>
@@ -166,12 +180,19 @@ const Uplink = () => {
               { label: 'linkedin', value: '/in/gaborszantoi', href: 'https://www.linkedin.com/in/gaborszantoi/', hoverClass: 'group-hover:text-secondary-fixed' },
               { label: 'github', value: 'github.com/Szantoi', href: 'https://github.com/Szantoi', hoverClass: 'group-hover:text-[#00ffff]' },
               { label: 'email', value: 'szantoi.gabor@gmail.com', href: 'mailto:szantoi.gabor@gmail.com', hoverClass: 'group-hover:text-tertiary' },
-              { label: 'helyszín', value: 'Budapest // Hibrid', href: '#', hoverClass: 'group-hover:text-white' }
+              { label: 'helyszín', value: 'Budapest // Hibrid', href: null, hoverClass: 'group-hover:text-white' }
             ].map((social) => (
-              <a key={social.label} className="group" href={social.href} target={social.href.startsWith('http') ? '_blank' : '_self'} rel="noreferrer">
-                <span className="block text-slate-500 font-mono text-[10px] mb-1 uppercase tracking-tighter">{social.label}</span>
-                <span className={`block break-words font-headline font-bold text-on-surface ${social.hoverClass} transition-colors`}>{social.value}</span>
-              </a>
+              social.href ? (
+                <a key={social.label} className="group" href={social.href} target={social.href.startsWith('http') ? '_blank' : undefined} rel={social.href.startsWith('http') ? 'noopener noreferrer' : undefined}>
+                  <span className="block text-slate-500 font-mono text-[10px] mb-1 uppercase tracking-tighter">{social.label}</span>
+                  <span className={`block break-words font-headline font-bold text-on-surface ${social.hoverClass} transition-colors`}>{social.value}</span>
+                </a>
+              ) : (
+                <div key={social.label} className="group">
+                  <span className="block text-slate-500 font-mono text-[10px] mb-1 uppercase tracking-tighter">{social.label}</span>
+                  <span className={`block break-words font-headline font-bold text-on-surface ${social.hoverClass} transition-colors`}>{social.value}</span>
+                </div>
+              )
             ))}
           </div>
         </div>

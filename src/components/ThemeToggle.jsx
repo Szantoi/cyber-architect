@@ -18,7 +18,7 @@ const ThemeToggle = ({ className = '' }) => {
         ${className}
       `}
       title={isDark ? 'Váltás világos módra (Daylight Tactical Slate)' : 'Váltás sötét módra (Void Dark Archive)'}
-      aria-label="Témaváltó"
+      aria-label={isDark ? 'Váltás világos témára' : 'Váltás sötét témára'}
     >
       <span className="flex items-center gap-1.5">
         {isDark ? (

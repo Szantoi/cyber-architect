@@ -17,7 +17,7 @@ services:
       # Persistent SQLite WAL database and backup storage
       - portfolio_data:/app/data
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/api/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/api/health/ready').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 3

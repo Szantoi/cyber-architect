@@ -275,7 +275,9 @@ const McpAgentGateway = () => {
               return (
                 <button
                   key={key}
+                  type="button"
                   onClick={() => setActiveTab(key)}
+                  aria-pressed={isSelected}
                   className={`w-full min-w-0 p-4 border-2 text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${
                     isSelected
                       ? 'border-neonCyan dark:bg-slate-900 bg-cyan-50 shadow-[4px_4px_0_#0f172a] text-slate-950 dark:text-white'
@@ -310,6 +312,7 @@ const McpAgentGateway = () => {
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => handleCopy(currentConfig.code)}
                   className={`w-full justify-center sm:w-auto px-4 py-2 text-xs font-headline font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-[2px_2px_0_#0f172a] ${
                     copied 
@@ -525,10 +528,11 @@ const McpLiveTester = () => {
         {/* Left: Tool Selection & Parameters */}
         <div className="lg:col-span-5 space-y-4">
           <div>
-            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
+            <label htmlFor="mcp-tool-select" className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
               VÁLASSZ TESZTELENDŐ MCP ESZKÖZT:
             </label>
             <select
+              id="mcp-tool-select"
               value={activeTestTool}
               onChange={(e) => {
                 setActiveTestTool(e.target.value);
@@ -547,10 +551,11 @@ const McpLiveTester = () => {
             {activeTestTool === 'search_knowledge' && (
               <>
                 <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
+                  <label htmlFor="mcp-search-query" className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
                     KERESÉSI KIFEJEZÉS (QUERY):
                   </label>
                   <input
+                    id="mcp-search-query"
                     type="text"
                     required
                     value={queryInput}
@@ -560,10 +565,11 @@ const McpLiveTester = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
+                  <label htmlFor="mcp-content-type" className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
                     TARTALOM TÍPUSA:
                   </label>
                   <select
+                    id="mcp-content-type"
                     value={testContentType}
                     onChange={(e) => setTestContentType(e.target.value)}
                     className="w-full dark:bg-slate-900 bg-white border border-slate-700 p-2 text-xs text-neonCyan outline-none"
@@ -582,10 +588,11 @@ const McpLiveTester = () => {
                   ℹ️ Ehhez a művelethez szükséges egy érvényes <strong>PORTFOLIO_API_KEY</strong> vagy Admin PIN token!
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
+                  <label htmlFor="mcp-auth-key" className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
                     AUTH KEY / ADMIN TOKEN:
                   </label>
                   <input
+                    id="mcp-auth-key"
                     type="password"
                     value={authKeyInput}
                     onChange={(e) => setAuthKeyInput(e.target.value)}
@@ -594,10 +601,11 @@ const McpLiveTester = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
+                  <label htmlFor="mcp-article-title" className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
                     CIKK CÍME:
                   </label>
                   <input
+                    id="mcp-article-title"
                     type="text"
                     required
                     value={articleTitle}
@@ -606,10 +614,11 @@ const McpLiveTester = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
+                  <label htmlFor="mcp-article-content" className="block text-[10px] text-slate-400 font-bold uppercase mb-1">
                     MARKDOWN TARTALOM:
                   </label>
                   <textarea
+                    id="mcp-article-content"
                     rows={3}
                     value={articleContent}
                     onChange={(e) => setArticleContent(e.target.value)}

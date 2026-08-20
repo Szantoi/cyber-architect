@@ -1,6 +1,39 @@
 import React, { useState, useEffect, useRef, useId } from 'react';
 import { Copy, Check, Terminal, Eye, Code, AlertCircle } from 'lucide-react';
-import mermaid from 'mermaid';
+
+let mermaidPromise;
+
+const loadMermaid = () => {
+  if (!mermaidPromise) {
+    mermaidPromise = import('mermaid')
+      .then(({ default: mermaid }) => {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'dark',
+          themeVariables: {
+            darkMode: true,
+            background: '#090d1d',
+            primaryColor: '#00fbfb',
+            primaryTextColor: '#ffffff',
+            primaryBorderColor: '#00fbfb',
+            lineColor: '#00fbfb',
+            secondaryColor: '#ff00ff',
+            tertiaryColor: '#1e293b'
+          },
+          fontFamily: 'JetBrains Mono, monospace',
+          securityLevel: 'strict',
+        });
+
+        return mermaid;
+      })
+      .catch((error) => {
+        mermaidPromise = undefined;
+        throw error;
+      });
+  }
+
+  return mermaidPromise;
+};
 
 // ─────────────────────────────────────────────────────────────
 // Mermaid Diagram Renderer (Biztonságos kliensoldali SVG renderelés)
@@ -14,40 +47,21 @@ const MermaidDiagram = ({ code }) => {
 
   useEffect(() => {
     let isMounted = true;
-    try {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: 'dark',
-        themeVariables: {
-          darkMode: true,
-          background: '#090d1d',
-          primaryColor: '#00fbfb',
-          primaryTextColor: '#ffffff',
-          primaryBorderColor: '#00fbfb',
-          lineColor: '#00fbfb',
-          secondaryColor: '#ff00ff',
-          tertiaryColor: '#1e293b'
-        },
-        fontFamily: 'JetBrains Mono, monospace',
-        securityLevel: 'strict',
+    loadMermaid()
+      .then((mermaid) => mermaid.render(idRef.current, code.trim()))
+      .then(({ svg: renderedSvg }) => {
+        if (isMounted) {
+          setSvg(renderedSvg);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.warn('Mermaid render warning:', err);
+          setError(err?.message || 'Diagram szintaxis hiba');
+        }
       });
 
-      mermaid.render(idRef.current, code.trim())
-        .then(({ svg: renderedSvg }) => {
-          if (isMounted) {
-            setSvg(renderedSvg);
-            setError(null);
-          }
-        })
-        .catch((err) => {
-          if (isMounted) {
-            console.warn('Mermaid render warning:', err);
-            setError(err?.message || 'Diagram szintaxis hiba');
-          }
-        });
-    } catch (e) {
-      if (isMounted) setError(e.message);
-    }
     return () => { isMounted = false; };
   }, [code]);
 

@@ -1,5 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { Routes, Route } from 'react-router-dom';
+import { MotionConfig } from 'framer-motion';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Arsenal from './components/Arsenal';
@@ -33,7 +34,7 @@ const GridSkeleton = () => (
 
 // Home Page Landing View
 const HomePage = () => (
-  <main className="relative z-10">
+  <div className="relative z-10">
     <CyberSEO 
       title="Szántói Gábor // Mérnöki Folyamatautomatizálás & AI Integráció"
       description="Mérnöki szemléletű folyamatfejlesztő és AI integrátor. Szigetrendszerek összekötése, manuális adminisztráció kiváltása és biztonságos belső AI megoldások."
@@ -45,19 +46,24 @@ const HomePage = () => (
       <ProjectGrid />
     </Suspense>
     <Uplink />
-  </main>
+  </div>
 );
 
 function App() {
   return (
-    <div className="bg-[var(--bg-main)] text-[var(--text-main)] font-body overflow-x-hidden min-h-screen relative selection:bg-neonCyan selection:text-black flex flex-col justify-between transition-colors duration-200">
+    <MotionConfig reducedMotion="user">
+      <div className="bg-[var(--bg-main)] text-[var(--text-main)] font-body overflow-x-hidden min-h-screen relative selection:bg-neonCyan selection:text-black flex flex-col justify-between pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-0 transition-colors duration-200">
+      <a href="#main-content" className="skip-link">
+        Ugrás a fő tartalomra
+      </a>
+
       {/* Global Aesthetic Overlays */}
       <div className="scanlines pointer-events-none fixed inset-0 z-[10000]"></div>
       <div className="noise-overlay pointer-events-none fixed inset-0 z-[9999]"></div>
       
       <Navbar />
       
-      <div className="flex-grow">
+      <main id="main-content" tabIndex={-1} className="flex-grow">
         <Suspense fallback={<CyberLoadingFallback />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -76,10 +82,11 @@ function App() {
             <Route path="/agent" element={<McpAgentGateway />} />
           </Routes>
         </Suspense>
-      </div>
+      </main>
 
       <Footer />
-    </div>
+      </div>
+    </MotionConfig>
   );
 }
 

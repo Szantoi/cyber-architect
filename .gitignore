@@ -65,6 +65,7 @@ lerna-debug.log*
 vite.log
 test-results/
 playwright-report/
+coverage/
 
 # 5. OS & IDE artifacts
 .DS_Store

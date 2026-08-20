@@ -14,7 +14,7 @@ test.describe('Public User Journey Suite', () => {
   });
 
   test('toggles dark and light cyber themes smoothly', async ({ page }) => {
-    const themeButton = page.locator('button[title*="TÉMA"], button[aria-label*="Téma"]').first();
+    const themeButton = page.getByRole('button', { name: /váltás (világos|sötét) témára/i });
     await expect(themeButton).toBeVisible();
 
     const htmlElement = page.locator('html');

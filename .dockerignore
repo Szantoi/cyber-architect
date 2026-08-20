@@ -3,10 +3,33 @@ dist
 .git
 .github
 .husky
+
+# Environment files and credentials must never enter Docker build layers.
+.env
+.env.*
+**/*credentials*.json
+**/*client_secret*.json
+**/*service-account*.json
+**/*service_account*.json
+**/*drive-tokens*.json
+**/token.json
+**/tokens.json
+**/*.pem
+**/*.key
+**/*.cert
+**/*.pfx
+
+# Exclude every local SQLite database, including WAL/SHM sidecars, at any depth.
+**/*.sqlite*
+**/*.sqlite3*
+**/*.db*
+
+# Test sources and generated reports are not needed in the production image.
+e2e
+server/tests
+src/tests
 playwright-report
 test-results
-data/*.sqlite-shm
-data/*.sqlite-wal
 data/backups
 coverage
 *.log

@@ -606,11 +606,12 @@ const MarkdownRenderer = ({
   // Komponens definíciók a Markdown elemekhez
   const components = {
     pre: ({ children }) => <>{children}</>,
-      h1: buildHeading(1),
-      h2: buildHeading(2),
-      h3: buildHeading(3),
-      h4: buildHeading(4),
-      p: ({ children }) => {
+    code: CodeBlock,
+    h1: buildHeading(1),
+    h2: buildHeading(2),
+    h3: buildHeading(3),
+    h4: buildHeading(4),
+    p: ({ children }) => {
         const fullParagraphText = extractTextFromChildren(children);
         
         // 1. Szerver RAG Chunk prioritás

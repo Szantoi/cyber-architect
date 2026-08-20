@@ -25,10 +25,7 @@ class SseService {
     this.clients.delete(res);
     logger.info(`[SSE] Client disconnected. Total active streams: ${this.clients.size}`);
 
-    if (this.clients.size === 0 && this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
+    if (this.clients.size === 0) this.stopHeartbeat();
   }
 
   sendToClient(res, eventType, data) {
@@ -47,8 +44,11 @@ class SseService {
         client.write(payload);
       } catch (err) {
         this.clients.delete(client);
+        logger.warn('[SSE] Removing failed client stream:', err);
       }
     }
+
+    if (this.clients.size === 0) this.stopHeartbeat();
   }
 
   startHeartbeat() {
@@ -59,6 +59,27 @@ class SseService {
     if (this.heartbeatInterval.unref) {
       this.heartbeatInterval.unref();
     }
+  }
+
+  stopHeartbeat() {
+    if (!this.heartbeatInterval) return;
+    clearInterval(this.heartbeatInterval);
+    this.heartbeatInterval = null;
+  }
+
+  shutdown() {
+    this.stopHeartbeat();
+
+    for (const client of this.clients) {
+      try {
+        client.end?.();
+      } catch (err) {
+        logger.warn('[SSE] Error closing client stream during shutdown:', err);
+      }
+    }
+
+    this.clients.clear();
+    logger.info('[SSE] All event streams closed.');
   }
 }
 

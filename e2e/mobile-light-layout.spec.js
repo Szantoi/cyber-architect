@@ -51,7 +51,7 @@ async function collectMobileDiagnostics(page) {
     const parseColor = (value) => {
       const rgbMatch = value.match(/^rgba?\(([^)]+)\)$/i);
       if (rgbMatch) {
-        const parts = rgbMatch[1].split(/[\s,\/]+/).filter(Boolean).map(Number);
+        const parts = rgbMatch[1].split(/[\s,/]+/).filter(Boolean).map(Number);
         if (parts.length < 3 || parts.slice(0, 3).some(Number.isNaN)) return null;
 
         return {

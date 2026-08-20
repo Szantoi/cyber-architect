@@ -57,6 +57,53 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+.skip-link {
+  position: fixed;
+  top: 0;
+  left: 1rem;
+  z-index: 100001;
+  padding: 0.75rem 1rem;
+  transform: translateY(-150%);
+  background: var(--surface-panel);
+  color: var(--text-main);
+  border: 2px solid var(--neon-cyan);
+  font-weight: 800;
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0.75rem);
+}
+
+:is(a, button, input, textarea, select, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 3px solid var(--neon-cyan) !important;
+  outline-offset: 3px;
+}
+
+.knowledge-node:focus-visible {
+  outline: none !important;
+}
+
+.knowledge-node:focus-visible rect {
+  stroke: var(--neon-cyan);
+  stroke-width: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Gombok és kártyák kontrasztos ipari kontúrja világos módban */
 .light button, 
 .light a.border, 

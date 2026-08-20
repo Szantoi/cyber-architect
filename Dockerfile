@@ -4,6 +4,7 @@
 FROM node:22-alpine AS builder
 
 WORKDIR /app
+ENV HUSKY=0
 
 COPY package*.json ./
 RUN npm ci
@@ -23,8 +24,8 @@ ENV PORT=3001
 ENV SQLITE_DB_PATH=/app/data/portfolio.sqlite
 
 COPY package*.json ./
-RUN apk add --no-cache --virtual .build-deps python3 make g++ \
-    && apk add --no-cache sqlite \
+RUN npm pkg delete scripts.prepare \
+    && apk add --no-cache --virtual .build-deps python3 make g++ \
     && npm ci --omit=dev \
     && apk del .build-deps
 

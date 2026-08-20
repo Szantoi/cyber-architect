@@ -4,9 +4,11 @@ import { logger } from '../logger.js';
  * 404 Not Found Middleware for unhandled API routes.
  */
 export function notFoundHandler(req, res) {
+  const requestPath = req.path || req.originalUrl?.split('?')[0] || '';
+
   res.status(404).json({
     success: false,
-    error: `ROUTE_NOT_FOUND: ${req.method} ${req.originalUrl}`,
+    error: `ROUTE_NOT_FOUND: ${req.method} ${requestPath}`,
     code: 'NOT_FOUND',
     timestamp: new Date().toISOString()
   });
@@ -20,11 +22,12 @@ export function globalErrorHandler(err, req, res, _next) {
   const statusCode = err.status || err.statusCode || 500;
   const isProd = process.env.NODE_ENV === 'production';
 
-  logger.error(`[UNHANDLED_ERROR] ${err.message}`, {
-    url: req.originalUrl,
+  logger.error('[UNHANDLED_ERROR]', err, {
+    path: req.path || req.originalUrl?.split('?')[0],
     method: req.method,
     ip: req.ip,
-    stack: isProd ? undefined : err.stack
+    requestId: req.id,
+    statusCode
   });
 
   res.status(statusCode).json({

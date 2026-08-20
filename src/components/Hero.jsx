@@ -1,6 +1,10 @@
 import { motion } from 'framer-motion';
 import { useContent } from '../context/ContentContext';
 
+const preferredScrollBehavior = () => (
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+);
+
 const Hero = () => {
   const { settings } = useContent();
 
@@ -63,7 +67,8 @@ const Hero = () => {
                 {idx < titleLines.length - 1 && <br />}
               </span>
             ))}
-            <motion.span 
+            <motion.span
+              aria-hidden="true"
               animate={{ opacity: [1, 0] }}
               transition={{ repeat: Infinity, duration: 0.8, ease: "steps(2)" }}
               className="inline-block w-4 h-12 md:w-8 md:h-20 bg-neonCyan align-middle ml-2"
@@ -85,7 +90,7 @@ const Hero = () => {
                 const el = document.querySelector('#uplink');
                 if (el) {
                   const y = el.getBoundingClientRect().top + window.pageYOffset - 80;
-                  window.scrollTo({ top: y, behavior: 'smooth' });
+                  window.scrollTo({ top: y, behavior: preferredScrollBehavior() });
                   window.history.pushState(null, '', '#uplink');
                 }
               }}
@@ -93,7 +98,7 @@ const Hero = () => {
             >
               <span className="relative z-10 flex items-center gap-3">
                 {btnPrimary}
-                <span className="material-symbols-outlined font-bold">arrow_forward</span>
+                <span aria-hidden="true" className="material-symbols-outlined font-bold">arrow_forward</span>
               </span>
               <div className="absolute inset-x-0 bottom-0 h-1 bg-black/20 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
             </a>
@@ -104,14 +109,14 @@ const Hero = () => {
                 const el = document.querySelector('#grid');
                 if (el) {
                   const y = el.getBoundingClientRect().top + window.pageYOffset - 80;
-                  window.scrollTo({ top: y, behavior: 'smooth' });
+                  window.scrollTo({ top: y, behavior: preferredScrollBehavior() });
                   window.history.pushState(null, '', '#grid');
                 }
               }}
               className="w-full justify-center bg-white/40 dark:bg-transparent border-2 dark:border-white/20 border-slate-950 text-on-surface font-headline font-black italic uppercase px-6 sm:w-auto sm:px-10 py-5 shadow-[4px_4px_0_#0f172a] dark:shadow-none hover:bg-slate-950 hover:text-white dark:hover:border-neonMagenta dark:hover:text-neonMagenta transition-all duration-300 flex items-center gap-3"
             >
               {btnSecondary}
-              <span className="material-symbols-outlined">folder_open</span>
+              <span aria-hidden="true" className="material-symbols-outlined">folder_open</span>
             </a>
           </motion.div>
         </div>

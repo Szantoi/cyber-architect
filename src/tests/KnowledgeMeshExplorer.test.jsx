@@ -20,4 +20,14 @@ describe('KnowledgeMeshExplorer Component Unit Tests', () => {
 
     expect(handleSelect).toHaveBeenCalledWith('zart-rag-architektura-specifikacio');
   });
+
+  it('exposes graph nodes as keyboard-operable controls', () => {
+    const handleSelect = vi.fn();
+    render(<KnowledgeMeshExplorer onSelectDoc={handleSelect} />);
+
+    const ragNode = screen.getByRole('button', { name: /AI RAG Core csomópont megnyitása/i });
+    fireEvent.keyDown(ragNode, { key: 'Enter' });
+
+    expect(handleSelect).toHaveBeenCalledWith('zart-rag-architektura-specifikacio');
+  });
 });

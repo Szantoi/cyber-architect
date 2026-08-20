@@ -8,7 +8,9 @@ test.describe('Admin Portal Journey E2E Suite', () => {
     await page.evaluate(() => {
       try {
         localStorage.clear();
-      } catch {}
+      } catch {
+        // Storage can be unavailable in hardened browser contexts; login still remains testable.
+      }
     });
     const adminNavLink = page.locator('nav a[href="/admin"]').first();
     await adminNavLink.click();

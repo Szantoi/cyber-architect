@@ -20,6 +20,7 @@ import {
   Activity
 } from 'lucide-react';
 import { useContent } from '../context/ContentContext';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 const TextDecrypt = ({ text, isHovered }) => {
   const [displayText, setDisplayText] = useState(text);
@@ -235,9 +236,8 @@ const ProjectCard = ({ project, variants, index, viewMode, onOpenModal }) => {
   const isWide = index % 3 === 1;
 
   return (
-    <motion.div
+    <motion.article
       variants={variants}
-      onClick={() => onOpenModal(project)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={`group relative bg-[var(--surface-panel)] border-2 dark:border-white/10 border-slate-900 hover:border-neonCyan transition-all duration-300 rounded-none flex flex-col justify-between overflow-hidden cursor-pointer ${
@@ -248,6 +248,18 @@ const ProjectCard = ({ project, variants, index, viewMode, onOpenModal }) => {
       <CornerBracket position="tr" color={isHovered ? "text-neonMagenta border-neonMagenta" : "dark:text-white/20 text-slate-900"} />
       <CornerBracket position="bl" color={isHovered ? "text-neonCyan border-neonCyan" : "dark:text-white/20 text-slate-900"} />
       <CornerBracket position="br" color={isHovered ? "text-neonMagenta border-neonMagenta" : "dark:text-white/20 text-slate-900"} />
+
+      <button
+        type="button"
+        onClick={() => onOpenModal(project)}
+        onFocus={() => setIsHovered(true)}
+        onBlur={() => setIsHovered(false)}
+        className="absolute inset-0 z-30 cursor-pointer bg-transparent"
+        style={{ outlineOffset: '-4px' }}
+        aria-label={`${project.humanTitle} részleteinek megnyitása`}
+      >
+        <span className="sr-only">Projekt részleteinek megnyitása</span>
+      </button>
 
       {/* Industrial Header */}
       <div className="px-3.5 py-1.5 dark:bg-slate-950/80 bg-slate-200 border-b-2 dark:border-white/5 border-slate-900 flex items-center justify-between z-10 font-mono">
@@ -265,7 +277,8 @@ const ProjectCard = ({ project, variants, index, viewMode, onOpenModal }) => {
       {/* Compact Banner Image */}
       <div className="relative overflow-hidden h-28 md:h-32">
         <img 
-          alt={project.title} 
+          alt=""
+          aria-hidden="true"
           className="w-full h-full object-cover opacity-35 group-hover:opacity-75 group-hover:scale-105 transition-all duration-700 grayscale group-hover:grayscale-0" 
           src={project.img}
         />
@@ -334,7 +347,7 @@ const ProjectCard = ({ project, variants, index, viewMode, onOpenModal }) => {
           </div>
         </div>
       </div>
-    </motion.div>
+    </motion.article>
   );
 };
 
@@ -342,18 +355,15 @@ const ProjectCard = ({ project, variants, index, viewMode, onOpenModal }) => {
 // 3. PROJECT DETAIL MODAL (HR/CEO & TECH DEEP DIVE)
 // ============================================================================
 const ProjectDetailModal = ({ project, onClose }) => {
+  const modalRef = useModalFocusTrap(Boolean(project), onClose);
+
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
     document.body.style.overflow = 'hidden';
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'unset';
     };
-  }, [onClose]);
+  }, []);
 
   if (!project) return null;
 
@@ -363,12 +373,17 @@ const ProjectDetailModal = ({ project, onClose }) => {
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 pt-24 pb-8 bg-black/85 backdrop-blur-md overflow-y-auto"
     >
       <motion.div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`project-dialog-title-${project.id}`}
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         className="w-full max-w-3xl bg-[var(--surface-panel)] border-2 border-neonCyan p-6 md:p-8 max-h-[85vh] overflow-y-auto shadow-[0_0_50px_rgba(0,255,255,0.3)] relative font-body my-auto"
       >
         <button
+          type="button"
           onClick={onClose}
           className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white bg-slate-900 border border-white/10 hover:border-neonCyan transition-colors cursor-pointer z-10"
           aria-label="Bezárás"
@@ -383,7 +398,7 @@ const ProjectDetailModal = ({ project, onClose }) => {
           <span>CÉLCSOPORT: {project.targetAudience}</span>
         </div>
 
-        <h2 className="text-2xl md:text-3xl font-headline font-black uppercase italic dark:text-white text-slate-950 mb-1">
+        <h2 id={`project-dialog-title-${project.id}`} className="text-2xl md:text-3xl font-headline font-black uppercase italic dark:text-white text-slate-950 mb-1">
           {project.title}
         </h2>
         <p className="text-sm md:text-base text-neonMagenta font-headline font-bold uppercase mb-6">
@@ -479,6 +494,7 @@ const ProjectDetailModal = ({ project, onClose }) => {
             </a>
           )}
           <button
+            type="button"
             onClick={onClose}
             className="px-5 py-2.5 border-2 dark:border-white/20 border-slate-400 font-headline font-black text-xs uppercase hover:border-neonMagenta hover:text-neonMagenta transition-all cursor-pointer"
           >
@@ -528,10 +544,11 @@ const ProjectGrid = () => {
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
             {/* View Mode Switcher */}
-            <div className="flex flex-wrap border-2 dark:border-white/15 border-slate-900 p-1 dark:bg-slate-950 bg-slate-200">
+            <div role="group" aria-label="Projektkártyák nézete" className="flex flex-wrap border-2 dark:border-white/15 border-slate-900 p-1 dark:bg-slate-950 bg-slate-200">
               <button
                 type="button"
                 onClick={() => setViewMode('hr')}
+                aria-pressed={viewMode === 'hr'}
                 className={`px-3 py-1.5 text-xs font-headline font-black uppercase transition-all cursor-pointer flex items-center gap-1.5 ${
                   viewMode === 'hr'
                     ? 'bg-neonCyan text-black shadow-[2px_2px_0_#0f172a]'
@@ -545,6 +562,7 @@ const ProjectGrid = () => {
               <button
                 type="button"
                 onClick={() => setViewMode('tech')}
+                aria-pressed={viewMode === 'tech'}
                 className={`px-3 py-1.5 text-xs font-headline font-black uppercase transition-all cursor-pointer flex items-center gap-1.5 ${
                   viewMode === 'tech'
                     ? 'bg-neonMagenta text-white shadow-[2px_2px_0_#0f172a]'
