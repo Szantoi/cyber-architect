@@ -1267,7 +1267,9 @@ const TacticalVaultExplorer = ({
       </div>
 
       {/* ── 3-Column Main Layout ── */}
-      <div className="relative flex min-w-0 items-start">
+      <div className={`relative flex min-w-0 items-start ${
+        activeDoc ? '' : 'xl:h-[calc(100dvh-8.5rem)] xl:min-h-0 xl:overflow-hidden'
+      }`}>
 
         {/* ───────────────────────────────────────────────────────────── */}
         {/* 1. BAL SÁV: FASTUKTÚRA & GYORSKERESŐ                           */}
@@ -1279,12 +1281,18 @@ const TacticalVaultExplorer = ({
           aria-hidden={!sidebarOpen}
           className={`
             ${sidebarOpen
-              ? 'w-72 sm:w-84 overflow-y-auto overscroll-contain xl:overflow-visible'
+              ? `w-72 sm:w-84 overflow-y-auto overscroll-contain ${
+                activeDoc
+                  ? 'xl:overflow-visible'
+                  : 'xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain'
+              }`
               : 'w-0 overflow-hidden invisible pointer-events-none'}
             shrink-0 border-r-2 dark:border-white/10 border-slate-900 dark:bg-[#070b19] bg-slate-50
             flex flex-col transition-all duration-300
             fixed top-[8.5rem] bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 z-20
-            xl:sticky xl:top-[8.5rem] xl:bottom-auto xl:left-auto xl:z-auto xl:self-start
+            ${activeDoc
+              ? 'xl:sticky xl:top-[8.5rem] xl:bottom-auto xl:left-auto xl:z-auto xl:self-start'
+              : 'xl:static xl:self-stretch'}
           `}
         >
           {/* Hub Button & Folder Navigator Header in Sidebar */}
@@ -1694,7 +1702,12 @@ const TacticalVaultExplorer = ({
         {/* ───────────────────────────────────────────────────────────── */}
         {/* 2. KÖZÉPSŐ FŐ TÉR: DOKUMENTUM OLVASÓ VAGY BEMUTATÓ HUB       */}
         {/* ───────────────────────────────────────────────────────────── */}
-        <div className="flex-1 min-w-0 overflow-visible" id="vault-main-content">
+        <div
+          className={`flex-1 min-w-0 overflow-visible ${
+            activeDoc ? '' : 'xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain'
+          }`}
+          id="vault-main-content"
+        >
           
           {/* ══════════════════════════════════════════════════════════ */}
           {/* NÉZET A: CIKK OLVASÓ NÉZET (ACTIVE DOC)                     */}

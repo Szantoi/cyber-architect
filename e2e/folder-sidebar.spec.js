@@ -106,4 +106,52 @@ test.describe('Folder navigation discoverability and progressive disclosure', ()
     await expect(cards).toHaveCount(MOCK_DOCUMENTS.length);
     await expect(loadMore).toBeHidden();
   });
+
+  test('desktop keeps the folder navigator and card hub independently scrollable', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openKnowledgeVault(page);
+
+    const sidebar = page.getByTestId('vault-folder-sidebar');
+    const category = sidebar.locator(`[data-testid="folder-category"][data-category="${MOCK_CATEGORY}"]`);
+
+    await category.click();
+    await sidebar.getByTestId('folder-load-more').click();
+
+    const scrollState = await page.evaluate(() => {
+      const sidebarElement = document.querySelector('#vault-folder-sidebar');
+      const mainElement = document.querySelector('#vault-main-content');
+
+      if (!sidebarElement || !mainElement) return null;
+
+      const describe = (element) => ({
+        overflowY: window.getComputedStyle(element).overflowY,
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight
+      });
+
+      return {
+        sidebar: describe(sidebarElement),
+        main: describe(mainElement)
+      };
+    });
+
+    expect(scrollState).not.toBeNull();
+    expect(scrollState.sidebar.overflowY).toMatch(/auto|scroll/);
+    expect(scrollState.main.overflowY).toMatch(/auto|scroll/);
+    expect(scrollState.sidebar.scrollHeight).toBeGreaterThan(scrollState.sidebar.clientHeight);
+    expect(scrollState.main.scrollHeight).toBeGreaterThan(scrollState.main.clientHeight);
+
+    const positions = await page.evaluate(() => {
+      const sidebarElement = document.querySelector('#vault-folder-sidebar');
+      const mainElement = document.querySelector('#vault-main-content');
+
+      sidebarElement.scrollTop = 160;
+      mainElement.scrollTop = 240;
+
+      return { sidebar: sidebarElement.scrollTop, main: mainElement.scrollTop };
+    });
+
+    expect(positions.sidebar).toBeGreaterThan(0);
+    expect(positions.main).toBeGreaterThan(0);
+  });
 });
