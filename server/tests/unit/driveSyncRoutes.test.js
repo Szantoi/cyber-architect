@@ -33,6 +33,13 @@ function postEmptyRepair(body) {
     .send(body);
 }
 
+function postOAuthRehome(body) {
+  return request(app)
+    .post('/api/admin/drive/rehome-empty-oauth')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send(body);
+}
+
 describe('Drive synchronization route safety', () => {
   it('runs an explicitly confirmed pull-only reconciliation', async () => {
     const syncSpy = vi.spyOn(driveSyncService, 'syncAll').mockResolvedValue({
@@ -181,6 +188,111 @@ describe('Drive synchronization route safety', () => {
     expect(response.body).toMatchObject({ success: false, partial: false });
   });
 
+  it('previews OAuth ownership rehome by default without an apply confirmation', async () => {
+    const rehomeSpy = vi.spyOn(driveSyncService, 'rehomeEmptyServiceAccountFilesToOAuth').mockResolvedValue({
+      would_rehome: 22,
+      expected_rehome_count: 22,
+      plan_digest: 'a'.repeat(64),
+      errors: []
+    });
+
+    const response = await postOAuthRehome({});
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      partial: false,
+      dry_run: true,
+      operation: 'OAUTH_EMPTY_DRIVE_REHOME'
+    });
+    expect(rehomeSpy).toHaveBeenCalledWith({
+      dryRun: true,
+      expectedPlanDigest: null,
+      expectedRehomeCount: null
+    });
+  });
+
+  it('requires an exact confirmation plus the preview plan digest and count before OAuth rehome', async () => {
+    const rehomeSpy = vi.spyOn(driveSyncService, 'rehomeEmptyServiceAccountFilesToOAuth').mockResolvedValue({
+      rehomed: 1,
+      errors: []
+    });
+    const confirmation = 'REHOME_EMPTY_SERVICE_ACCOUNT_FILES_TO_OAUTH_USER';
+    const digest = 'b'.repeat(64);
+
+    const noConfirmation = await postOAuthRehome({ dry_run: false });
+    const noPlan = await postOAuthRehome({ dry_run: false, confirm: confirmation });
+    const applied = await postOAuthRehome({
+      dry_run: false,
+      confirm: confirmation,
+      plan_digest: digest,
+      expected_rehome_count: 22
+    });
+
+    expect(noConfirmation.status).toBe(400);
+    expect(noConfirmation.body.error).toBe('DRIVE_REHOME_CONFIRMATION_REQUIRED');
+    expect(noPlan.status).toBe(400);
+    expect(noPlan.body.error).toBe('DRIVE_REHOME_PLAN_REQUIRED');
+    expect(applied.status).toBe(200);
+    expect(rehomeSpy).toHaveBeenCalledTimes(1);
+    expect(rehomeSpy).toHaveBeenCalledWith({
+      dryRun: false,
+      expectedPlanDigest: digest,
+      expectedRehomeCount: 22
+    });
+  });
+
+  it('accepts a confirmed zero-count verified-resume no-op without reporting a gateway failure', async () => {
+    const rehomeSpy = vi.spyOn(driveSyncService, 'rehomeEmptyServiceAccountFilesToOAuth').mockResolvedValue({
+      rehomed: 0,
+      already_rehomed: 22,
+      no_op: true,
+      resume_only: true,
+      database_followup_required: true,
+      errors: []
+    });
+    const digest = 'e'.repeat(64);
+
+    const response = await postOAuthRehome({
+      dry_run: false,
+      confirm: 'REHOME_EMPTY_SERVICE_ACCOUNT_FILES_TO_OAUTH_USER',
+      plan_digest: digest,
+      expected_rehome_count: 0
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      partial: false,
+      dry_run: false,
+      no_op: true,
+      already_rehomed: 22,
+      database_followup_required: true
+    });
+    expect(rehomeSpy).toHaveBeenCalledWith({
+      dryRun: false,
+      expectedPlanDigest: digest,
+      expectedRehomeCount: 0
+    });
+  });
+
+  it('returns a gateway failure when every OAuth rehome fails before a mapping is completed', async () => {
+    vi.spyOn(driveSyncService, 'rehomeEmptyServiceAccountFilesToOAuth').mockResolvedValue({
+      rehomed: 0,
+      errors: [{ code: 'DRIVE_REHOME_OAUTH_CREATE_FAILED' }]
+    });
+
+    const response = await postOAuthRehome({
+      dry_run: false,
+      confirm: 'REHOME_EMPTY_SERVICE_ACCOUNT_FILES_TO_OAUTH_USER',
+      plan_digest: 'c'.repeat(64),
+      expected_rehome_count: 22
+    });
+
+    expect(response.status).toBe(502);
+    expect(response.body).toMatchObject({ success: false, partial: false });
+  });
+
   it('rejects a concurrent Drive mutation while an apply operation is active', async () => {
     let resolveSync;
     const syncSpy = vi.spyOn(driveSyncService, 'syncAll').mockImplementationOnce(() => (
@@ -206,6 +318,38 @@ describe('Drive synchronization route safety', () => {
       active_operation: 'DRIVE_PULL_TO_DATABASE'
     });
     expect(repairSpy).not.toHaveBeenCalled();
+
+    resolveSync({ processed: 1, created: 1, updated: 0, errors: [] });
+    expect((await firstRequest).status).toBe(200);
+  });
+
+  it('rejects OAuth rehome while another confirmed Drive mutation holds the mutex', async () => {
+    let resolveSync;
+    const syncSpy = vi.spyOn(driveSyncService, 'syncAll').mockImplementationOnce(() => (
+      new Promise(resolve => {
+        resolveSync = resolve;
+      })
+    ));
+    const rehomeSpy = vi.spyOn(driveSyncService, 'rehomeEmptyServiceAccountFilesToOAuth');
+    const firstRequest = postSync({
+      dry_run: false,
+      confirm: 'APPLY_DRIVE_PULL_TO_DATABASE'
+    }).then(response => response);
+    await vi.waitFor(() => expect(syncSpy).toHaveBeenCalledTimes(1));
+
+    const concurrent = await postOAuthRehome({
+      dry_run: false,
+      confirm: 'REHOME_EMPTY_SERVICE_ACCOUNT_FILES_TO_OAUTH_USER',
+      plan_digest: 'd'.repeat(64),
+      expected_rehome_count: 22
+    });
+
+    expect(concurrent.status).toBe(409);
+    expect(concurrent.body).toMatchObject({
+      error: 'DRIVE_OPERATION_IN_PROGRESS',
+      active_operation: 'DRIVE_PULL_TO_DATABASE'
+    });
+    expect(rehomeSpy).not.toHaveBeenCalled();
 
     resolveSync({ processed: 1, created: 1, updated: 0, errors: [] });
     expect((await firstRequest).status).toBe(200);

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dbService } from '../../services/dbService.js';
 import {
+  deriveLocalPathHashSourceId,
   deriveLegacyLocalSourceId,
   driveSyncService,
   formatPostToMarkdown,
@@ -1960,6 +1961,196 @@ dimensions:
     });
   });
 
+  it('adopts the exact path-hash local identity after Drive rehome without creating a duplicate row', async () => {
+    const folderPath = 'knowledge\\Rehomed Folder';
+    const fileName = 'rehomed.md';
+    const pathHashSourceId = deriveLocalPathHashSourceId('knowledge/Rehomed Folder', fileName);
+    expect(deriveLocalPathHashSourceId(folderPath, fileName)).toBe(pathHashSourceId);
+
+    const document = {
+      fileId: 'gdrive_rehomed-path-hash',
+      fileName,
+      folderPath,
+      modifiedTime: '2026-08-20T12:15:00.000Z',
+      rawContent: '---\nslug: rehomed\ntitle: Rehomed document\ncontent_type: knowledge\nsummary: Cloud summary\n---\nCloud content'
+    };
+    const rows = [{
+      id: 701,
+      slug: 'rehomed',
+      title: 'Rehomed document',
+      content_type: 'knowledge',
+      drive_file_id: pathHashSourceId,
+      published: 1
+    }];
+
+    vi.spyOn(driveSyncService, 'getStatus').mockReturnValue(cloudStatus({ drive_blog_folder_id: null }));
+    vi.spyOn(driveSyncService, 'getAccessTokenCandidates').mockResolvedValue([{ mode: 'SERVICE_ACCOUNT', token: 'token' }]);
+    vi.spyOn(driveSyncService, 'crawlCloudSourceWithTokenFallback').mockResolvedValue(emptyCrawlReport({ documents: [document] }));
+    vi.spyOn(dbService, 'getBlogPosts').mockImplementation(() => rows);
+    vi.spyOn(dbService, 'getBlogPostByDriveFileId').mockImplementation(sourceId => (
+      rows.find(row => row.drive_file_id === sourceId) || null
+    ));
+    vi.spyOn(dbService, 'getBlogPostBySlug').mockImplementation(slug => (
+      rows.find(row => row.slug === slug) || null
+    ));
+    const updateSpy = vi.spyOn(dbService, 'updateBlogPost').mockImplementation((id, data) => {
+      const rowIndex = rows.findIndex(row => row.id === id);
+      rows[rowIndex] = { ...rows[rowIndex], ...data };
+      return rows[rowIndex];
+    });
+    const createSpy = vi.spyOn(dbService, 'createBlogPost').mockImplementation(data => {
+      const row = { id: rows.length + 1, ...data };
+      rows.push(row);
+      return row;
+    });
+
+    const preview = await driveSyncService.syncAll('TEST', { dryRun: true });
+
+    expect(preview).toMatchObject({ dry_run: true, created: 0, updated: 1, adopted: 1, errors: [] });
+    expect(preview.files).toEqual([
+      expect.objectContaining({ status: 'WOULD_UPDATE', legacy_source_adopted: true })
+    ]);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(rows).toEqual([
+      expect.objectContaining({ id: 701, drive_file_id: pathHashSourceId })
+    ]);
+
+    const applied = await driveSyncService.syncAll('TEST');
+
+    expect(applied).toMatchObject({ dry_run: false, created: 0, updated: 1, adopted: 1, errors: [] });
+    expect(updateSpy).toHaveBeenCalledWith(701, expect.objectContaining({
+      drive_file_id: document.fileId,
+      slug: 'rehomed'
+    }), 'TEST');
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: 701, drive_file_id: document.fileId });
+
+    const rerun = await driveSyncService.syncAll('TEST');
+
+    expect(rerun).toMatchObject({ created: 0, updated: 1, adopted: 0, errors: [] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: 701, drive_file_id: document.fileId });
+  });
+
+  it('skips an exact path-hash rehome when its hash and historic aliases own different rows', async () => {
+    const folderPath = 'knowledge/Conflicting Migration';
+    const fileName = 'conflict.md';
+    const pathHashSourceId = deriveLocalPathHashSourceId(folderPath, fileName);
+    const historicSourceId = deriveLegacyLocalSourceId(folderPath, fileName);
+    const document = {
+      fileId: 'gdrive_path-alias-conflict',
+      fileName,
+      folderPath,
+      modifiedTime: '2026-08-20T12:16:00.000Z',
+      rawContent: '---\nslug: conflict\ntitle: Conflicting migration\ncontent_type: knowledge\n---\nCloud content'
+    };
+    const rows = [{
+      id: 702,
+      slug: 'path-hash-owner',
+      title: 'Path hash owner',
+      content_type: 'knowledge',
+      drive_file_id: pathHashSourceId,
+      published: 1
+    }, {
+      id: 703,
+      slug: 'historic-owner',
+      title: 'Historic owner',
+      content_type: 'knowledge',
+      drive_file_id: historicSourceId,
+      published: 1
+    }];
+
+    vi.spyOn(driveSyncService, 'getStatus').mockReturnValue(cloudStatus({ drive_blog_folder_id: null }));
+    vi.spyOn(driveSyncService, 'getAccessTokenCandidates').mockResolvedValue([{ mode: 'SERVICE_ACCOUNT', token: 'token' }]);
+    vi.spyOn(driveSyncService, 'crawlCloudSourceWithTokenFallback').mockResolvedValue(emptyCrawlReport({ documents: [document] }));
+    vi.spyOn(dbService, 'getBlogPosts').mockReturnValue(rows);
+    vi.spyOn(dbService, 'getBlogPostByDriveFileId').mockReturnValue(null);
+    vi.spyOn(dbService, 'getBlogPostBySlug').mockReturnValue(null);
+    const updateSpy = vi.spyOn(dbService, 'updateBlogPost');
+    const createSpy = vi.spyOn(dbService, 'createBlogPost');
+
+    const result = await driveSyncService.syncAll('TEST');
+
+    expect(result).toMatchObject({ created: 0, updated: 0, adopted: 0, processed: 0, synced: 0, skipped_count: 1 });
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        code: 'LEGACY_SOURCE_ID_AMBIGUOUS',
+        match_strategy: 'EXACT_PATH_ALIASES',
+        ambiguity_reason: 'MULTIPLE_DB_EXACT_CANDIDATES',
+        candidate_source_ids: [pathHashSourceId, historicSourceId]
+      })
+    ]);
+    expect(result.files).toEqual([
+      expect.objectContaining({ file_id: document.fileId, status: 'SKIPPED', reason: 'LEGACY_SOURCE_ID_AMBIGUOUS' })
+    ]);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(rows).toHaveLength(2);
+    expect(rows.map(row => row.drive_file_id)).toEqual([pathHashSourceId, historicSourceId]);
+  });
+
+  it('skips a rehomed source already owned by a different record than its exact path-hash owner', async () => {
+    const folderPath = 'knowledge/Existing Target Conflict';
+    const fileName = 'existing-target.md';
+    const pathHashSourceId = deriveLocalPathHashSourceId(folderPath, fileName);
+    const document = {
+      fileId: 'gdrive_existing-target-conflict',
+      fileName,
+      folderPath,
+      modifiedTime: '2026-08-20T12:17:00.000Z',
+      rawContent: '---\nslug: incoming\ntitle: Incoming document\ncontent_type: knowledge\n---\nCloud content'
+    };
+    const legacyOwner = {
+      id: 704,
+      slug: 'local-owner',
+      title: 'Local mirror owner',
+      content_type: 'knowledge',
+      drive_file_id: pathHashSourceId,
+      published: 1
+    };
+    const existingDriveOwner = {
+      id: 705,
+      slug: 'drive-owner',
+      title: 'Existing Drive owner',
+      content_type: 'knowledge',
+      drive_file_id: document.fileId,
+      published: 1
+    };
+    const rows = [legacyOwner, existingDriveOwner];
+
+    vi.spyOn(driveSyncService, 'getStatus').mockReturnValue(cloudStatus({ drive_blog_folder_id: null }));
+    vi.spyOn(driveSyncService, 'getAccessTokenCandidates').mockResolvedValue([{ mode: 'SERVICE_ACCOUNT', token: 'token' }]);
+    vi.spyOn(driveSyncService, 'crawlCloudSourceWithTokenFallback').mockResolvedValue(emptyCrawlReport({ documents: [document] }));
+    vi.spyOn(dbService, 'getBlogPosts').mockReturnValue(rows);
+    vi.spyOn(dbService, 'getBlogPostByDriveFileId').mockImplementation(sourceId => (
+      rows.find(row => row.drive_file_id === sourceId) || null
+    ));
+    vi.spyOn(dbService, 'getBlogPostBySlug').mockReturnValue(null);
+    const updateSpy = vi.spyOn(dbService, 'updateBlogPost');
+    const createSpy = vi.spyOn(dbService, 'createBlogPost');
+
+    const result = await driveSyncService.syncAll('TEST');
+
+    expect(result).toMatchObject({ created: 0, updated: 0, adopted: 0, processed: 0, synced: 0, skipped_count: 1 });
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        code: 'LEGACY_SOURCE_ID_TARGET_CONFLICT',
+        previous_source_id: document.fileId,
+        legacy_source_id: pathHashSourceId,
+        match_strategy: 'EXACT_NORMALIZED_PATH_HASH',
+        candidate_source_ids: [pathHashSourceId]
+      })
+    ]);
+    expect(result.files).toEqual([
+      expect.objectContaining({ file_id: document.fileId, status: 'SKIPPED', reason: 'LEGACY_SOURCE_ID_TARGET_CONFLICT' })
+    ]);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(rows).toEqual([legacyOwner, existingDriveOwner]);
+  });
+
   it('bridges an exact legacy path identity in the real temp DB despite metadata drift', async () => {
     const unique = Date.now();
     const legacySlug = `legacy-path-owner-${unique}`;
@@ -2300,7 +2491,7 @@ Nested body`
     ]);
   });
 
-  it('refuses an exact legacy path owner claimed by multiple incoming documents', async () => {
+  it('skips exact legacy path duplicate claims instead of creating duplicate records', async () => {
     const legacySourceId = 'drive_file_knowledge/duplicate-folder_duplicate_md';
     const legacyRow = {
       id: 27,
@@ -2338,9 +2529,20 @@ Nested body`
     const result = await driveSyncService.syncAll('TEST');
 
     expect(updateSpy).not.toHaveBeenCalled();
-    expect(createSpy).toHaveBeenCalledTimes(2);
-    expect(result).toMatchObject({ created: 2, updated: 0, adopted: 0 });
-    expect(result.warnings.filter(issue => issue.code === 'LEGACY_SOURCE_ID_AMBIGUOUS')).toEqual([
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      created: 0,
+      updated: 0,
+      adopted: 0,
+      processed: 0,
+      synced: 0,
+      skipped_count: 2
+    });
+    expect(result.files).toEqual([
+      expect.objectContaining({ file_id: 'gdrive_exact_duplicate_a', status: 'SKIPPED', reason: 'LEGACY_SOURCE_ID_AMBIGUOUS' }),
+      expect.objectContaining({ file_id: 'gdrive_exact_duplicate_b', status: 'SKIPPED', reason: 'LEGACY_SOURCE_ID_AMBIGUOUS' })
+    ]);
+    expect(result.errors).toEqual([
       expect.objectContaining({
         file_id: 'gdrive_exact_duplicate_a',
         match_strategy: 'EXACT_FULL_PATH',

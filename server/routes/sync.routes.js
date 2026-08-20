@@ -273,6 +273,7 @@ syncRouter.post('/sync/drive/sync', authMiddleware, postSyncHandler);
 syncRouter.post('/drive/sync', authMiddleware, postSyncHandler);
 
 const EMPTY_DRIVE_REPAIR_CONFIRMATION = 'REPAIR_EMPTY_DRIVE_FILES';
+const OAUTH_REHOME_CONFIRMATION = 'REHOME_EMPTY_SERVICE_ACCOUNT_FILES_TO_OAUTH_USER';
 
 // 5. Repair only existing, empty Drive Markdown files from their exact local counterpart.
 // Preview is the safe default. Apply requires an explicit confirmation phrase and the
@@ -332,3 +333,84 @@ const postEmptyDriveRepairHandler = async (req, res) => {
 };
 
 syncRouter.post('/admin/drive/repair-empty', authMiddleware, postEmptyDriveRepairHandler);
+
+// 6. Replace only exact, empty service-account-owned cloud placeholders with
+// OAuth-user-owned replacements. The preview plan is cryptographically bound to
+// the apply request so a changed Drive/local inventory cannot be applied by
+// accident. Missing local-only documents remain intentionally out of scope.
+const postOAuthRehomeHandler = async (req, res) => {
+  let dryRun;
+  try {
+    dryRun = parseBooleanFlag(req.body?.dry_run ?? req.query?.dry_run, true);
+  } catch {
+    return res.status(400).json({
+      error: 'INVALID_REHOME_REQUEST',
+      message: 'dry_run must be a boolean value.'
+    });
+  }
+
+  const planDigest = req.body?.plan_digest;
+  const expectedRehomeCount = req.body?.expected_rehome_count;
+  if (!dryRun) {
+    if (req.body?.confirm !== OAUTH_REHOME_CONFIRMATION) {
+      return res.status(400).json({
+        error: 'DRIVE_REHOME_CONFIRMATION_REQUIRED',
+        message: `confirm must equal ${OAUTH_REHOME_CONFIRMATION}.`
+      });
+    }
+    if (typeof planDigest !== 'string' || !/^[a-f0-9]{64}$/.test(planDigest)) {
+      return res.status(400).json({
+        error: 'DRIVE_REHOME_PLAN_REQUIRED',
+        message: 'plan_digest must be the 64-character SHA-256 digest returned by the preview.'
+      });
+    }
+    const parsedCount = typeof expectedRehomeCount === 'number'
+      ? expectedRehomeCount
+      : Number(expectedRehomeCount);
+    if (!Number.isSafeInteger(parsedCount) || parsedCount < 0 || String(expectedRehomeCount).trim() === '') {
+      return res.status(400).json({
+        error: 'DRIVE_REHOME_PLAN_REQUIRED',
+        message: 'expected_rehome_count must be the non-negative integer returned by the preview.'
+      });
+    }
+  }
+
+  try {
+    logger.info(`[DRIVE_REHOME] ${dryRun ? 'Preview' : 'Apply'} requested via Admin API`);
+    const rehome = () => driveSyncService.rehomeEmptyServiceAccountFilesToOAuth({
+      dryRun,
+      expectedPlanDigest: dryRun ? null : planDigest,
+      expectedRehomeCount: dryRun ? null : Number(expectedRehomeCount)
+    });
+    const results = dryRun
+      ? await rehome()
+      : await runExclusiveDriveMutation('REHOME_EMPTY_SERVICE_ACCOUNT_FILES_TO_OAUTH_USER', rehome);
+    const errors = Array.isArray(results.errors) ? results.errors : [];
+    const successful = dryRun ? (results.would_rehome ?? 0) : (results.rehomed ?? 0);
+    const completeFailure = errors.length > 0 && successful === 0;
+    const partial = errors.length > 0 && successful > 0;
+
+    return res.status(completeFailure ? 502 : 200).json({
+      ...results,
+      success: errors.length === 0,
+      partial,
+      dry_run: dryRun,
+      operation: 'OAUTH_EMPTY_DRIVE_REHOME',
+      report: results
+    });
+  } catch (err) {
+    if (err.code === 'DRIVE_OPERATION_IN_PROGRESS') {
+      return res.status(409).json({
+        error: err.code,
+        active_operation: err.activeOperation
+      });
+    }
+    logger.error('OAuth Drive rehome failed', err);
+    return res.status(500).json({
+      error: 'DRIVE_OAUTH_REHOME_FAILED',
+      message: err.message
+    });
+  }
+};
+
+syncRouter.post('/admin/drive/rehome-empty-oauth', authMiddleware, postOAuthRehomeHandler);
