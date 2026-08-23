@@ -10,7 +10,11 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - SQLITE_DB_PATH=/app/data/portfolio.sqlite
+      # Keeps the existing /app/data/portfolio.sqlite default while allowing an
+      # explicit per-Vault workspace directory in a Compose override.
+      - SQLITE_DB_PATH=${SQLITE_DB_PATH:-}
+      - SQLITE_DATA_DIR=${SQLITE_DATA_DIR:-/app/data}
+      - CYBER_ARCHITECT_WORKSPACE_DATA_DIR=${CYBER_ARCHITECT_WORKSPACE_DATA_DIR:-}
       - SITE_URL=${SITE_URL:-https://www.ai.szantoi.hu}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://www.ai.szantoi.hu,https://ai.szantoi.hu,https://szantoi.hu,https://www.szantoi.hu}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a random value of at least 32 characters}
@@ -22,15 +26,15 @@ services:
       - GOOGLE_OAUTH_CLIENT_PATH=${GOOGLE_OAUTH_CLIENT_PATH:-}
       - GOOGLE_OAUTH_TOKENS_PATH=${GOOGLE_OAUTH_TOKENS_PATH:-/app/data/drive-tokens.json}
       - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI:-}
-      # Writable local Markdown mirror. It lives on the persistent data volume;
-      # optionally bind-mount an existing CyberArchitect directory here.
+      # Canonical Obsidian Vault root. Sync reads only Content/**/index.md;
+      # SQLite/RAG and graph projections are derived from this directory.
       - CYBER_ARCHITECT_CONTENT_ROOT=${CYBER_ARCHITECT_CONTENT_ROOT:-/app/data/content}
       # For Drive API access, mount the credential through a private override:
       # GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/google-drive.json
     volumes:
       # Persistent SQLite WAL database and backup storage
       - portfolio_data:/app/data
-      # Optional canonical Markdown mirror instead of the volume directory:
+      # Mount a Vault root (containing Content/) instead of the volume directory:
       # - ../CyberArchitect:/app/data/content
       # Do not copy credentials into the image. Example override:
       # - ./secrets/google-drive.json:/run/secrets/google-drive.json:ro

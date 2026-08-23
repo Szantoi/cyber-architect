@@ -9,6 +9,8 @@ import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
 import { dbService } from './dbService.js';
 import { logger } from '../logger.js';
+import { createCanonicalTaxonomyFrontmatter } from './frontmatterTaxonomy.js';
+import { resolveDocumentPresentation } from './presentationProfile.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -167,6 +169,9 @@ function resolveContentPaths(env = process.env) {
   const root = resolveContentRoot(env);
   return {
     root,
+    // Content/ is the only authoritative Markdown corpus.  The two paths
+    // below are retained solely for explicit legacy Drive recovery tooling.
+    contentDir: path.resolve(root, 'Content'),
     knowledgeDir: path.resolve(root, 'KnowledgeBase'),
     blogDir: path.resolve(root, 'Blog')
   };
@@ -2688,19 +2693,28 @@ export function formatPostToMarkdown(post) {
     dimensions = {};
   }
 
+  const presentation = resolveDocumentPresentation({
+    presentationProfile: post?.presentation_profile,
+    contentType: post?.content_type,
+    fallbackProfile: 'knowledge'
+  });
+
   const metadata = {
+    // The Drive repair/export path must emit the same Obsidian-compatible
+    // schema as the canonical local vault. `dimensions` is import-only and
+    // never written as a nested map again.
+    ...createCanonicalTaxonomyFrontmatter({ dimensions }),
     title: post?.title || '',
     slug: post?.slug || '',
     project_id: post?.project_id || 'prj_rag_enterprise',
-    content_type: post?.content_type === 'knowledge' ? 'knowledge' : 'blog',
+    presentation_profile: presentation.presentation_profile,
     summary: post?.summary || '',
     category: post?.category || 'TUDÁSTÁR',
     visibility: post?.visibility === 'private' ? 'private' : 'public',
     published: Boolean(post?.published),
     read_time: post?.read_time || '4 PERC',
     ...(post?.audio_url ? { audio_url: post.audio_url } : {}),
-    ...(post?.video_url ? { video_url: post.video_url } : {}),
-    dimensions
+    ...(post?.video_url ? { video_url: post.video_url } : {})
   };
   const serializedMetadata = yaml.dump(metadata, {
     noRefs: true,
@@ -3093,6 +3107,7 @@ export const driveSyncService = {
         validationReason: error?.reason || 'INVALID_PATH'
       }));
     }
+    const localContentDir = contentPaths?.contentDir || null;
     const localKnowledgeDir = contentPaths?.knowledgeDir || null;
     const localBlogDir = contentPaths?.blogDir || null;
     const hasCloudCreds = this.hasUsableServiceAccountCredentials();
@@ -3134,6 +3149,7 @@ export const driveSyncService = {
       return count;
     };
 
+    const contentFileCount = countFiles(localContentDir);
     const knowledgeFileCount = countFiles(localKnowledgeDir);
     const blogFileCount = countFiles(localBlogDir);
 
@@ -3146,9 +3162,11 @@ export const driveSyncService = {
 
     return {
       mode,
-      source_of_truth: mode === 'CONFIGURATION_ERROR'
-        ? 'UNAVAILABLE'
-        : (mode === 'LOCAL_DRIVE_MIRROR' ? 'LOCAL_DRIVE_MIRROR' : 'GOOGLE_DRIVE_CLOUD'),
+      // Google Drive can be a constrained export/repair target, never the
+      // input authority. The local Obsidian vault is reconciled by
+      // localVaultService before SQLite/RAG reads any content.
+      source_of_truth: mode === 'CONFIGURATION_ERROR' ? 'UNAVAILABLE' : 'LOCAL_VAULT',
+      cloud_role: mode === 'CONFIGURATION_ERROR' ? 'UNAVAILABLE' : 'OPTIONAL_MIRROR',
       drive_folder_id: driveFolderId,
       drive_knowledge_folder_id: driveKnowledgeFolderId,
       drive_blog_folder_id: driveBlogFolderId,
@@ -3157,11 +3175,16 @@ export const driveSyncService = {
       has_cloud_credentials: hasCloudCreds,
       configuration_errors: configurationErrors,
       content_root: contentPaths?.root || null,
+      content_vault_dir: localContentDir,
+      content_files_count: contentFileCount,
+      // Compatibility fields for the break-glass Drive recovery flow. These
+      // roots are never read by the normal Vault → SQLite/RAG synchronization.
       knowledge_vault_dir: localKnowledgeDir,
       blog_vault_dir: localBlogDir,
       knowledge_files_count: knowledgeFileCount,
       blog_files_count: blogFileCount,
-      local_files_detected: knowledgeFileCount + blogFileCount,
+      legacy_local_files_detected: knowledgeFileCount + blogFileCount,
+      local_files_detected: contentFileCount,
       last_sync_time: null,
       checked_at: new Date().toISOString()
     };
@@ -3259,6 +3282,22 @@ export const driveSyncService = {
     }
     assertCanonicalExportSlug(post.slug);
 
+    // The generic DB → vault → cloud exporter predates the vault-authoritative
+    // model and can erase Obsidian-owned frontmatter. It remains test-only so
+    // no deployed process can accidentally make SQLite a content authority.
+    if (process.env.NODE_ENV !== 'test') {
+      return {
+        status: 'DISABLED',
+        local_written: false,
+        local_error: null,
+        cloud_written: false,
+        cloud_skipped: true,
+        cloud_skip_reason: 'CLOUD_EXPORT_DISABLED',
+        drive_file_id: null,
+        drive_modified_time: null
+      };
+    }
+
     const isBlog = post.content_type === 'blog';
     const fileName = `${post.slug}.md`;
     const markdownContent = formatPostToMarkdown(post);
@@ -3314,6 +3353,17 @@ export const driveSyncService = {
       drive_file_id: null,
       drive_modified_time: null
     };
+
+    // A cloud mirror must never become the sole successful write. If the
+    // canonical vault write failed, deliberately stop before acquiring a
+    // token, creating folders, or creating a remote conflict copy.
+    if (!localWritten) {
+      return {
+        ...baseResult,
+        cloud_skipped: true,
+        cloud_skip_reason: 'LOCAL_VAULT_WRITE_FAILED'
+      };
+    }
 
     const hasCloudTarget = (
       status.mode === 'GOOGLE_SERVICE_ACCOUNT'
@@ -5413,8 +5463,9 @@ export const driveSyncService = {
   },
 
   /**
-   * Pull Drive/local documents into the database. Drive writes are opt-in via
-   * pushFirst; the safe default is a read-only cloud crawl followed by DB upsert.
+   * Legacy cloud importer retained only for explicit, break-glass migrations.
+   * Normal application flows must use localVaultService: the server-side
+   * Obsidian vault is the sole content authority.
    */
   async syncAll(actor = 'DRIVE_SYNC_OPERATOR', { pushFirst = false, dryRun = false } = {}) {
     const status = this.getStatus();
@@ -5439,6 +5490,20 @@ export const driveSyncService = {
       sources: [],
       files: []
     };
+
+    // Do not make a cloud crawl an accidental content-import path. The legacy
+    // importer survives only in tests that protect historical migration logic;
+    // it is unavailable in every deployed process.
+    if (process.env.NODE_ENV !== 'test') {
+      results.mode = 'DISABLED';
+      results.source_of_truth = 'LOCAL_VAULT';
+      results.errors.push(createDriveIssue({
+        code: 'CLOUD_PULL_DISABLED',
+        stage: 'POLICY',
+        message: 'Cloud-to-database import is disabled. Reconcile the local Obsidian vault instead.'
+      }));
+      return results;
+    }
 
     logger.info(`[DRIVE_SYNC] Initiating ${dryRun ? 'dry-run ' : ''}synchronization mode: ${status.mode}`);
 
@@ -5661,11 +5726,15 @@ export const driveSyncService = {
 
       try {
         const { metadata, content } = parseFrontmatter(doc.rawContent);
-        const defaultContentType = doc.folderPath?.toLowerCase().includes('blog') ? 'blog' : 'knowledge';
-        const content_type = String(metadata.content_type || defaultContentType).trim().toLowerCase();
-        if (content_type !== 'blog' && content_type !== 'knowledge') {
-          throw new Error('INVALID_CONTENT_TYPE');
-        }
+        const defaultPresentationProfile = doc.folderPath?.toLowerCase().includes('blog')
+          ? 'article'
+          : 'knowledge';
+        const presentation = resolveDocumentPresentation({
+          presentationProfile: metadata.presentation_profile,
+          contentType: metadata.content_type,
+          fallbackProfile: defaultPresentationProfile
+        });
+        const content_type = presentation.content_type;
 
         let folderCategory = '';
         let articleFolder = '';
@@ -6010,14 +6079,17 @@ export const driveSyncService = {
         const validationCodes = new Set([
           'INVALID_FRONTMATTER_YAML',
           'INVALID_FRONTMATTER_ROOT',
-          'INVALID_CONTENT_TYPE'
+          'INVALID_CONTENT_TYPE',
+          'INVALID_PRESENTATION_PROFILE',
+          'PRESENTATION_PROFILE_CONTENT_TYPE_CONFLICT'
         ]);
-        const issueCode = validationCodes.has(error.message) ? error.message : 'DOCUMENT_SYNC_FAILED';
+        const errorCode = String(error?.code || error?.message || '');
+        const issueCode = validationCodes.has(errorCode) ? errorCode : 'DOCUMENT_SYNC_FAILED';
         const issue = createDriveIssue({
           code: issueCode,
-          stage: error.message?.startsWith('INVALID_FRONTMATTER')
+          stage: errorCode.startsWith('INVALID_FRONTMATTER')
             ? 'PARSE'
-            : (error.message === 'INVALID_CONTENT_TYPE' ? 'VALIDATION' : 'UPSERT'),
+            : (validationCodes.has(errorCode) ? 'VALIDATION' : 'UPSERT'),
           message: error.message,
           folderPath: doc.folderPath,
           fileId: sourceId,

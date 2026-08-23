@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { getTreeFolders, getMultiCategoriesForDoc } from '../utils/taxonomy.js';
+import {
+  buildTaxonomyFacetOptions,
+  documentMatchesFacets,
+  getDocumentDimensionValues,
+  matchesTaxonomySmartCollection,
+  normalizeTaxonomyConfig
+} from '../utils/taxonomyConfig.js';
 
 describe('Information Architecture & Taxonomy Unit Tests', () => {
   const sampleDoc = {
@@ -29,21 +36,21 @@ describe('Information Architecture & Taxonomy Unit Tests', () => {
   });
 
   describe('getTreeFolders (Faceted Pivot Matrix)', () => {
-    it('groups by canonical Drive folder in drive mode', () => {
+    it('falls back to the category when a document has no Vault path', () => {
       const folders = getTreeFolders(sampleDoc, 'drive');
       expect(folders).toEqual(['01_AI_es_Adatbiztonsag']);
     });
 
-    it('groups descendant documents under their real Drive root rather than frontmatter category', () => {
+    it('groups descendant documents under their canonical Content collection rather than frontmatter category', () => {
       const firstChild = {
         ...sampleDoc,
         category: 'ARCHITEKTÚRA',
-        drive_path: 'knowledge/01_Zart_Vallalati_RAG/zero-raw-query-es-sqlite-wal-adatbiztonsag'
+        drive_path: 'Content/01_Zart_Vallalati_RAG/zero-raw-query-es-sqlite-wal-adatbiztonsag/index.md'
       };
       const secondChild = {
         ...sampleDoc,
         category: 'BIZTONSÁG',
-        drive_path: 'knowledge/01_Zart_Vallalati_RAG/nexus-knowledge-service-multi-agent-flotta'
+        drive_path: 'Content/01_Zart_Vallalati_RAG/nexus-knowledge-service-multi-agent-flotta/index.md'
       };
 
       expect(getTreeFolders(firstChild, 'drive')).toEqual(['ZÁRT VÁLLALATI RAG']);
@@ -74,6 +81,93 @@ describe('Information Architecture & Taxonomy Unit Tests', () => {
       const emptyDoc = { slug: 'test-doc', title: 'Test' };
       expect(getTreeFolders(emptyDoc, 'industry')).toEqual(['Általános Iparág']);
       expect(getTreeFolders(emptyDoc, 'tech')).toEqual(['Kód & Algoritmusok']);
+    });
+  });
+
+  describe('registry-backed taxonomy compatibility', () => {
+    it('reads an old Hungarian dimensions projection through a new SQL registry alias', () => {
+      const registry = normalizeTaxonomyConfig({
+        dimensions: [
+          {
+            id: 'industry',
+            frontmatter_key: 'tax_industry',
+            label: 'IPARÁG',
+            filterable: true
+          }
+        ],
+        terms: [{ id: 'manufacturing', dimension_id: 'industry', slug: 'manufacturing', label: 'Gyártás' }],
+        smart_collections: [],
+        relations: [{ id: 'manufacturing-related', source_term_id: 'manufacturing', target_term_id: 'manufacturing' }]
+      });
+      const [industry] = registry.dimensions;
+      const legacyProjectionDocument = { dimensions: { iparag: ['Gyártás'] } };
+
+      expect(getDocumentDimensionValues(legacyProjectionDocument, industry)).toEqual(['Gyártás']);
+      expect(documentMatchesFacets(legacyProjectionDocument, registry.dimensions, {
+        industry: 'manufacturing'
+      })).toBe(true);
+      expect(buildTaxonomyFacetOptions([legacyProjectionDocument], registry.dimensions, {}).industry).toEqual([
+        expect.objectContaining({ value: 'manufacturing', label: 'Gyártás', count: 1 })
+      ]);
+      expect(registry.relationships).toHaveLength(1);
+    });
+
+    it('honours explicit admin flags instead of reintroducing fallback pivots or smart folders', () => {
+      const registry = normalizeTaxonomyConfig({
+        dimensions: [{ id: 'custom', label: 'CUSTOM', filterable: false, groupable: false, multi_select: false, terms: [] }],
+        smart_collections: [{ id: 'archived-smart', slug: 'archived-smart', label: 'ARCHIVED', active: false, rules: [] }]
+      });
+
+      expect(registry.dimensions[0]).toMatchObject({ filterable: false, groupable: false, multi_select: false });
+      expect(registry.smart_collections).toHaveLength(1);
+      expect(registry.smart_collections[0].active).toBe(false);
+      expect(matchesTaxonomySmartCollection({}, registry.smart_collections[0])).toBe(false);
+      expect(normalizeTaxonomyConfig({ smart_collections: [] }).smart_collections).toEqual([]);
+    });
+
+    it('evaluates an admin smart collection against flat Obsidian taxonomy properties', () => {
+      const registry = normalizeTaxonomyConfig({
+        dimensions: [{
+          id: 'industry',
+          frontmatter_key: 'tax_industry',
+          label: 'IPARÁG',
+          filterable: true,
+          terms: [{ id: 'manufacturing', slug: 'manufacturing', label: 'Gyártás' }]
+        }],
+        smart_collections: [{
+          id: 'manufacturing-collection',
+          slug: 'manufacturing-collection',
+          name: 'Gyártás',
+          rule: { type: 'taxonomy', dimension_id: 'industry', term_ids: ['manufacturing'], match: 'any' }
+        }]
+      });
+
+      expect(matchesTaxonomySmartCollection(
+        { tax_industry: ['manufacturing'] },
+        registry.smart_collections[0],
+        registry.dimensions
+      )).toBe(true);
+      expect(matchesTaxonomySmartCollection(
+        { tax_industry: ['services'] },
+        registry.smart_collections[0],
+        registry.dimensions
+      )).toBe(false);
+    });
+
+    it('applies persisted manual memberships before the Smart collection rule', () => {
+      const registry = normalizeTaxonomyConfig({
+        smart_collections: [{
+          id: 'manual-membership',
+          name: 'Kézi tagság',
+          rule: { type: 'content', field: 'published', operator: 'equals', value: true },
+          membership_overrides: { 41: 'include', 42: 'exclude' }
+        }]
+      });
+      const [collection] = registry.smart_collections;
+
+      expect(matchesTaxonomySmartCollection({ id: 41, published: 0 }, collection)).toBe(true);
+      expect(matchesTaxonomySmartCollection({ id: 42, published: 1 }, collection)).toBe(false);
+      expect(matchesTaxonomySmartCollection({ id: 43, published: 1 }, collection)).toBe(true);
     });
   });
 });

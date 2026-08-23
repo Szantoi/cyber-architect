@@ -2,14 +2,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useContent } from '../../context/ContentContext';
 import { useAuth } from '../../context/AuthContext';
+import { useAdminPreview } from '../../context/AdminPreviewContext.jsx';
 import HelpPanel, { HelpButton } from './HelpPanel.jsx';
 import AdminLogin from './AdminLogin.jsx';
+import AdminPreviewLauncher from './AdminPreviewLauncher.jsx';
 
 // Modular Tabs
 import HeroSettingsTab from './tabs/HeroSettingsTab.jsx';
+import RagSettingsTab from './tabs/RagSettingsTab.jsx';
+import TaxonomyTab from './tabs/TaxonomyTab.jsx';
+import VaultTemplatesTab from './tabs/VaultTemplatesTab.jsx';
+import GraphManagementTab from './tabs/GraphManagementTab.jsx';
+import WorkflowStudioTab from './tabs/WorkflowStudioTab.jsx';
 import SkillsTab from './tabs/SkillsTab.jsx';
 import ProjectsTab from './tabs/ProjectsTab.jsx';
-import BlogPostsTab from './tabs/BlogPostsTab.jsx';
 import MessagesTab from './tabs/MessagesTab.jsx';
 import AgentMessagesTab from './tabs/AgentMessagesTab.jsx';
 import OrgMatrixTab from './tabs/OrgMatrixTab.jsx';
@@ -18,7 +24,8 @@ import SecurityPinTab from './tabs/SecurityPinTab.jsx';
 
 const AdminDashboard = () => {
   const { settings, skills, projects, refreshContent } = useContent();
-  const { adminToken, loginAdmin, logoutAdmin, adminFetch } = useAuth();
+  const { adminToken, isAuthChecking, loginAdmin, logoutAdmin, adminFetch } = useAuth();
+  const { exitAdminPreview } = useAdminPreview();
 
   const [activeTab, setActiveTab] = useState('settings');
   const [helpOpen, setHelpOpen] = useState(false);
@@ -26,15 +33,12 @@ const AdminDashboard = () => {
 
   // Editable States
   const [settingsForm, setSettingsForm] = useState(settings);
-  const [blogsList, setBlogsList] = useState([]);
   const [messagesList, setMessagesList] = useState([]);
   const [auditList, setAuditList] = useState([]);
 
   // Modal / Editing states
   const [editingSkill, setEditingSkill] = useState(null);
   const [editingProject, setEditingProject] = useState(null);
-  const [editingBlog, setEditingBlog] = useState(null);
-  const [showMarkdownCheatSheet, setShowMarkdownCheatSheet] = useState(false);
 
   // Agent Messages & Handoffs States
   const [agentMessages, setAgentMessages] = useState([]);
@@ -52,10 +56,6 @@ const AdminDashboard = () => {
   // Terminals & Organizational Matrix State
   const [terminalsList, setTerminalsList] = useState([]);
 
-  // Google Drive Sync State
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState(null);
-
   // Sync settingsForm when settings context changes
   useEffect(() => {
     setSettingsForm(settings);
@@ -70,9 +70,6 @@ const AdminDashboard = () => {
   const loadAdminData = useCallback(async () => {
     if (!adminToken) return;
     try {
-      const bRes = await adminFetch('/api/admin/blog');
-      if (bRes.ok) setBlogsList(await bRes.json());
-
       const mRes = await adminFetch('/api/admin/messages');
       if (mRes.ok) setMessagesList(await mRes.json());
 
@@ -201,168 +198,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // 4. Blog Handlers & Drive Sync
-  const handleSaveBlog = async (e) => {
-    e.preventDefault();
-    try {
-      const isNew = !editingBlog.id;
-      const url = isNew ? '/api/admin/blog' : `/api/admin/blog/${editingBlog.id}`;
-      const method = isNew ? 'POST' : 'PUT';
-
-      const res = await adminFetch(url, {
-        method,
-        body: JSON.stringify(editingBlog)
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok) {
-        if (data.drive_sync?.status === 'FAILED') {
-          showNotify('DOKUMENTUM_ELMENTVE // DRIVE_EXPORT_SIKERTELEN', true);
-        } else if (data.drive_sync?.status === 'PARTIAL') {
-          showNotify('DOKUMENTUM_ELMENTVE // DRIVE_EXPORT_RÉSZLEGES', true);
-        } else {
-          showNotify(isNew ? 'DOKUMENTUM_LÉTREHOZVA' : 'DOKUMENTUM_FRISSÍTVE');
-        }
-        setEditingBlog(null);
-        loadAdminData();
-      } else {
-        showNotify(data.error || 'SAVE_FAILED', true);
-      }
-    } catch {
-      showNotify('NETWORK_ERROR', true);
-    }
-  };
-
-  const handleDeleteBlog = async (id) => {
-    if (!window.confirm('BIZTOSAN_TÖRLÖD_A_DOKUMENTUMOT?')) return;
-    try {
-      const res = await adminFetch(`/api/admin/blog/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        showNotify('DOKUMENTUM_TÖRÖLVE');
-        loadAdminData();
-      } else {
-        showNotify('DELETE_FAILED', true);
-      }
-    } catch {
-      showNotify('DELETE_FAILED', true);
-    }
-  };
-
-  const handleDriveSync = async (dryRun = false) => {
-    setIsSyncing(true);
-    setSyncResult(null);
-    try {
-      const res = await adminFetch('/api/admin/drive/sync', {
-        method: 'POST',
-        body: JSON.stringify({
-          dry_run: dryRun,
-          ...(!dryRun && { confirm: 'APPLY_DRIVE_PULL_TO_DATABASE' })
-        })
-      });
-      const data = await res.json();
-      const report = data.report || data;
-      const processed = report.processed ?? report.synced ?? 0;
-      const errorCount = Array.isArray(report.errors) ? report.errors.length : 0;
-      const collisionCount = Array.isArray(report.collisions) ? report.collisions.length : (report.collisions || 0);
-
-      if (res.ok && report && typeof report === 'object') {
-        setSyncResult({ ...report, dry_run: data.dry_run ?? dryRun });
-        if (data.partial || errorCount > 0) {
-          showNotify(`DRIVE_SZINKRON_RÉSZLEGES: ${processed} feldolgozva, ${errorCount} hiba, ${collisionCount} ütközés`, true);
-        } else if (dryRun) {
-          showNotify(`DRIVE_ELŐNÉZET_KÉSZ: ${processed} fájl, adatbázis- és Drive-írás nélkül`);
-        } else {
-          showNotify(`DRIVE_PULL_SIKERES: ${processed} fájl (${report.created || 0} új, ${report.updated || 0} frissítve, ${collisionCount} átnevezve)`);
-        }
-        if (!dryRun) loadAdminData();
-      } else {
-        if (report && typeof report === 'object' && (report.errors || report.files)) {
-          setSyncResult(report);
-        }
-        showNotify(`SZINKRONIZÁCIÓS_HIBA: ${data.error || data.message || 'Ismeretlen hiba'}`, true);
-        if (data.details && !report.errors) setSyncResult({ errors: [{ file: 'Auth', error: data.details }] });
-      }
-    } catch {
-      showNotify('HÁLÓZATI_HIBA_A_SZINKRONIZÁLÁSKOR', true);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleEmptyDriveRepair = async (dryRun = true) => {
-    if (!dryRun && !window.confirm(
-      'A művelet kizárólag a Drive-on jelenleg üres Markdown-fájlokat tölti fel a pontos helyi párjukkal. Folytatod?'
-    )) return;
-
-    setIsSyncing(true);
-    setSyncResult(null);
-    try {
-      const res = await adminFetch('/api/admin/drive/repair-empty', {
-        method: 'POST',
-        body: JSON.stringify({
-          dry_run: dryRun,
-          ...(!dryRun && { confirm: 'REPAIR_EMPTY_DRIVE_FILES' })
-        })
-      });
-      const data = await res.json();
-      const report = data.report || data;
-      const wouldRepair = report.would_repair ?? report.wouldRepair ?? 0;
-      const repaired = report.repaired ?? 0;
-      const errorCount = Array.isArray(report.errors) ? report.errors.length : 0;
-
-      if (res.ok && report && typeof report === 'object') {
-        setSyncResult({
-          ...report,
-          dry_run: data.dry_run ?? dryRun,
-          operation: 'EMPTY_DRIVE_REPAIR'
-        });
-        if (data.partial || errorCount > 0) {
-          showNotify(`ÜRES_DRIVE_JAVÍTÁS_RÉSZLEGES: ${wouldRepair + repaired} párosítás, ${errorCount} hiba`, true);
-        } else if (dryRun) {
-          showNotify(`ÜRES_DRIVE_ELŐNÉZET_KÉSZ: ${wouldRepair} biztonságosan javítható fájl`);
-        } else {
-          showNotify(`ÜRES_DRIVE_FÁJLOK_JAVÍTVA: ${repaired} fájl; ezután futtasd a Drive → DB alkalmazást`);
-        }
-      } else {
-        if (report && typeof report === 'object') setSyncResult(report);
-        showNotify(`DRIVE_JAVÍTÁSI_HIBA: ${data.error || data.message || 'Ismeretlen hiba'}`, true);
-      }
-    } catch {
-      showNotify('HÁLÓZATI_HIBA_A_DRIVE_JAVÍTÁSKOR', true);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleDriveReconnect = async () => {
-    setIsSyncing(true);
-    try {
-      const res = await adminFetch('/api/admin/drive/auth-url');
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(data.error || data.message || `HTTP_${res.status || 'ERROR'}`);
-      }
-
-      const authUrl = [data.auth_url, data.authUrl]
-        .find(value => typeof value === 'string' && value.trim());
-
-      if (!authUrl) {
-        throw new Error('HIÁNYZÓ_GOOGLE_DRIVE_AUTH_URL');
-      }
-
-      window.location.assign(authUrl.trim());
-    } catch (error) {
-      showNotify(
-        `GOOGLE_DRIVE_ÚJRACSATLAKOZTATÁSI_HIBA: ${error?.message || 'HÁLÓZATI_HIBA'}`,
-        true
-      );
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // 5. Message Handlers
+  // 4. Message Handlers
   const handleMarkMessageRead = async (id) => {
     try {
       const res = await adminFetch(`/api/admin/messages/${id}/read`, { method: 'PUT' });
@@ -388,7 +224,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // 6. Agent Message Handlers
+  // 5. Agent Message Handlers
   const handleTransmitAgentMessage = async (e) => {
     e.preventDefault();
     try {
@@ -445,7 +281,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // 7. Terminal Handlers
+  // 6. Terminal Handlers
   const handleSaveTerminal = async (payload, isEditing) => {
     const isNew = !isEditing;
     const url = isNew ? '/api/admin/terminals' : `/api/admin/terminals/${payload.id}`;
@@ -481,7 +317,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // 8. Audit Rollback & PIN Handlers
+  // 7. Audit Rollback & PIN Handlers
   const handleRollback = async (auditId) => {
     try {
       const res = await adminFetch(`/api/admin/audit/${auditId}/rollback`, {
@@ -517,6 +353,14 @@ const AdminDashboard = () => {
     }
   };
 
+  if (isAuthChecking) {
+    return (
+      <div data-testid="admin-session-checking" role="status" className="min-h-screen bg-background pt-28 text-center font-mono text-xs text-neonCyan">
+        SESSION_VALIDATION_IN_PROGRESS...
+      </div>
+    );
+  }
+
   // If not logged in, render the clean AdminLogin component
   if (!adminToken) {
     return <AdminLogin onLogin={loginAdmin} />;
@@ -543,9 +387,10 @@ const AdminDashboard = () => {
             <HelpButton onClick={() => setHelpOpen(true)} />
             <Link
               to="/"
+              onClick={exitAdminPreview}
               className="px-4 py-2 border-2 dark:border-white/10 border-slate-900 dark:bg-slate-900/80 bg-[#cad4e2] text-slate-900 dark:text-slate-300 shadow-[2px_2px_0_#0f172a] dark:shadow-none hover:bg-slate-900 hover:text-white transition-colors uppercase font-bold"
             >
-              PREVIEW_SITE ↗
+              PUBLIC_SITE ↗
             </Link>
             <button
               onClick={logoutAdmin}
@@ -555,6 +400,8 @@ const AdminDashboard = () => {
             </button>
           </div>
         </div>
+
+        <AdminPreviewLauncher />
 
         {/* Global Notification Toast */}
         {notification && (
@@ -572,9 +419,13 @@ const AdminDashboard = () => {
         <div className="flex flex-wrap gap-2 mb-8 border-b-2 dark:border-white/10 border-slate-900 pb-4">
           {[
             { id: 'settings', label: 'GLOBAL_SETTINGS', icon: 'tune' },
+            { id: 'rag', label: 'RAG_TUNING', icon: 'psychology' },
+            { id: 'taxonomy', label: 'TAXONOMY_MATRIX', icon: 'account_tree' },
+            { id: 'vault_templates', label: 'VAULT_TEMPLATES', icon: 'description' },
+            { id: 'graphs', label: 'GRAPH_CONTROL', icon: 'hub' },
+            { id: 'workflows', label: 'WORKFLOW_STUDIO', icon: 'route' },
             { id: 'skills', label: `ARSENAL (${skills.length})`, icon: 'terminal' },
             { id: 'projects', label: `THE_GRID (${projects.length})`, icon: 'folder' },
-            { id: 'blog', label: `BLOG_LOGS (${blogsList.length})`, icon: 'article' },
             { id: 'messages', label: `UPLINK_INBOX (${messagesList.filter(m => !m.read_status).length})`, icon: 'mail' },
             { id: 'agent_messages', label: `AGENT_HANDOFFS (${agentMessages.filter(m => m.status === 'unread').length})`, icon: 'hub' },
             { id: 'organization', label: `ORG_MATRIX (${terminalsList.length})`, icon: 'lan' },
@@ -605,6 +456,41 @@ const AdminDashboard = () => {
           />
         )}
 
+        {activeTab === 'rag' && (
+          <RagSettingsTab
+            adminFetch={adminFetch}
+            onNotify={showNotify}
+          />
+        )}
+
+        {activeTab === 'taxonomy' && (
+          <TaxonomyTab
+            adminFetch={adminFetch}
+            onNotify={showNotify}
+          />
+        )}
+
+        {activeTab === 'vault_templates' && (
+          <VaultTemplatesTab
+            adminFetch={adminFetch}
+            onNotify={showNotify}
+          />
+        )}
+
+        {activeTab === 'graphs' && (
+          <GraphManagementTab
+            adminFetch={adminFetch}
+            onNotify={showNotify}
+          />
+        )}
+
+        {activeTab === 'workflows' && (
+          <WorkflowStudioTab
+            adminFetch={adminFetch}
+            onNotify={showNotify}
+          />
+        )}
+
         {/* Tab 2: Skills Management */}
         {activeTab === 'skills' && (
           <SkillsTab
@@ -627,26 +513,7 @@ const AdminDashboard = () => {
           />
         )}
 
-        {/* Tab 4: Blog & Knowledge Base CMS */}
-        {activeTab === 'blog' && (
-          <BlogPostsTab
-            blogsList={blogsList}
-            editingBlog={editingBlog}
-            setEditingBlog={setEditingBlog}
-            onSaveBlog={handleSaveBlog}
-            onDeleteBlog={handleDeleteBlog}
-            showMarkdownCheatSheet={showMarkdownCheatSheet}
-            setShowMarkdownCheatSheet={setShowMarkdownCheatSheet}
-            onDriveSync={handleDriveSync}
-            onEmptyDriveRepair={handleEmptyDriveRepair}
-            onDriveReconnect={handleDriveReconnect}
-            isSyncing={isSyncing}
-            syncResult={syncResult}
-            setSyncResult={setSyncResult}
-          />
-        )}
-
-        {/* Tab 5: Uplink Inbox */}
+        {/* Tab 4: Uplink Inbox */}
         {activeTab === 'messages' && (
           <MessagesTab
             messagesList={messagesList}
@@ -655,7 +522,7 @@ const AdminDashboard = () => {
           />
         )}
 
-        {/* Tab 6: Agent Handoffs & Communications */}
+        {/* Tab 5: Agent Handoffs & Communications */}
         {activeTab === 'agent_messages' && (
           <AgentMessagesTab
             agentMessages={agentMessages}
@@ -671,7 +538,7 @@ const AdminDashboard = () => {
           />
         )}
 
-        {/* Tab 7: Organizational Matrix & Workspaces */}
+        {/* Tab 6: Organizational Matrix & Workspaces */}
         {activeTab === 'organization' && (
           <OrgMatrixTab
             terminalsList={terminalsList}
@@ -687,7 +554,7 @@ const AdminDashboard = () => {
           />
         )}
 
-        {/* Tab 8: Audit Log Stream & Rollback */}
+        {/* Tab 7: Audit Log Stream & Rollback */}
         {activeTab === 'audit' && (
           <AuditLogsTab
             auditList={auditList}
@@ -696,7 +563,7 @@ const AdminDashboard = () => {
           />
         )}
 
-        {/* Tab 9: Security PIN & Registered Agent Tokens */}
+        {/* Tab 8: Security PIN & Registered Agent Tokens */}
         {activeTab === 'security' && (
           <SecurityPinTab 
             onUpdatePin={handleUpdatePin} 

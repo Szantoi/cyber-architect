@@ -15,6 +15,10 @@ import { parseLegacyMigrationArgs } from '../../scripts/migrateLegacyDatabase.js
 const tempDirectories = new Set();
 const fixedNow = () => new Date('2026-08-20T10:30:00.000Z');
 const SQLITE_DATABASE_SUFFIXES = Object.freeze(['', '-wal', '-shm']);
+// The test intentionally starts a separate Node CLI process. Keep the normal
+// five-second budget for in-process checks, while allowing Windows startup
+// contention in the parallel suite without weakening the file's other tests.
+const REAL_CLI_TEST_TIMEOUT_MS = 15_000;
 
 function createTempDirectory() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'cyberarchitect-legacy-migration-'));
@@ -323,7 +327,7 @@ describe('legacy database reconciliation CLI arguments', () => {
     });
     expect(hashFile(targetPath)).toBe(targetHash);
     expect(fs.existsSync(path.join(directory, 'backups'))).toBe(false);
-  });
+  }, REAL_CLI_TEST_TIMEOUT_MS);
 
   it('returns exit code 1 when dry-run reports validation errors', () => {
     const { sourcePath, targetPath } = fixturePaths();

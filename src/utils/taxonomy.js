@@ -64,7 +64,7 @@ const getDriveRootFolder = (item) => {
     .split(/[\\/]+/)
     .map(segment => segment.trim())
     .filter(Boolean);
-  const rootSegment = segments.find(segment => !/^(knowledge|knowledgebase|blog)$/i.test(segment));
+  const rootSegment = segments.find(segment => !/^(content|knowledge|knowledgebase|blog)$/i.test(segment));
   if (!rootSegment) return '';
 
   const canonicalSegment = canonicalizeDriveSegment(rootSegment);
@@ -84,10 +84,16 @@ export const getTreeFolders = (item, pivotMode = 'drive') => {
   if (!item) return ['Általános'];
 
   if (pivotMode === 'drive') {
-    // The Drive pivot intentionally groups every descendant document under
-    // its real first-level Drive folder. `category` remains a semantic/content
-    // field and is used only for records that predate Drive-path tracking.
-    return [getDriveRootFolder(item) || (item.category || 'Általános').split(',')[0].trim()];
+    // The Markdown package path is the canonical placement. `folder_path`
+    // remains a read-only compatibility projection for records predating the
+    // Vault-first model, so it is used only when no Vault source is known.
+    const vaultCollection = getDriveRootFolder(item);
+    if (vaultCollection) return [vaultCollection];
+
+    const folderPath = String(item.folder_path || '').trim();
+    if (folderPath) return [folderPath];
+
+    return [(item.category || 'Általános').split(',')[0].trim()];
   }
   if (pivotMode === 'topic') {
     return getMultiCategoriesForDoc(item);

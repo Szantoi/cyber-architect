@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import { authMiddleware } from '../security/auth.js';
+import { authMiddleware, requireOverseerAdmin } from '../security/auth.js';
 import { driveSyncService } from '../services/driveSyncService.js';
+import { localVaultService } from '../services/localVaultService.js';
 
 export const syncRouter = Router();
-const DRIVE_PULL_CONFIRMATION = 'APPLY_DRIVE_PULL_TO_DATABASE';
 let activeDriveMutation = null;
+let activeVaultMutation = null;
 
 async function runExclusiveDriveMutation(operation, callback) {
   if (activeDriveMutation) {
@@ -21,6 +22,22 @@ async function runExclusiveDriveMutation(operation, callback) {
     return await callback();
   } finally {
     activeDriveMutation = null;
+  }
+}
+
+async function runExclusiveVaultMutation(operation, callback) {
+  if (activeVaultMutation) {
+    const error = new Error('Another Vault mutation is already in progress.');
+    error.code = 'VAULT_OPERATION_IN_PROGRESS';
+    error.activeOperation = activeVaultMutation;
+    throw error;
+  }
+
+  activeVaultMutation = operation;
+  try {
+    return await callback();
+  } finally {
+    activeVaultMutation = null;
   }
 }
 
@@ -114,6 +131,68 @@ syncRouter.get('/admin/drive/status', authMiddleware, getStatusHandler);
 syncRouter.get('/sync/drive/status', authMiddleware, getStatusHandler);
 syncRouter.get('/drive/status', authMiddleware, getStatusHandler);
 
+// The Vault's Content/ tree is canonical. SQLite/RAG is a materialized search
+// and graph projection, refreshed only from Markdown source.
+const getVaultStatusHandler = (_req, res) => {
+  const status = localVaultService.getStatus();
+  return res.status(status.mode === 'CONFIGURATION_ERROR' ? 500 : 200).json({
+    ...status,
+    source_of_truth: 'LOCAL_VAULT',
+    mode: status.mode,
+    usage: 'CANONICAL_CONTENT'
+  });
+};
+syncRouter.get('/admin/vault/status', authMiddleware, getVaultStatusHandler);
+syncRouter.get('/vault/status', authMiddleware, getVaultStatusHandler);
+
+function sendVaultEditorError(res, error) {
+  const code = error?.code || 'VAULT_EDITOR_FAILED';
+  const status = code === 'VAULT_DOCUMENT_NOT_FOUND' || code === 'VAULT_DOCUMENT_FILE_MISSING'
+    ? 404
+    : (code === 'VAULT_DOCUMENT_CONFLICT' ? 409 : (code === 'LOCAL_VAULT_ROOT_INVALID' ? 503 : 400));
+  return res.status(status).json({
+    success: false,
+    error: code,
+    message: error?.message || 'A kanonikus Vault-dokumentum kezelése sikertelen.',
+    source_of_truth: 'LOCAL_VAULT',
+    ...(error?.details ? { details: error.details } : {})
+  });
+}
+
+const getVaultDocumentHandler = (req, res) => {
+  try {
+    return res.setHeader('Cache-Control', 'private, no-store, max-age=0').json({
+      success: true,
+      source_of_truth: 'LOCAL_VAULT',
+      document: localVaultService.getEditableDocument(req.params.slug)
+    });
+  } catch (error) {
+    logger.warn('[LOCAL_VAULT_EDITOR] Read rejected', { code: error?.code || error?.message, requestId: req.id });
+    return sendVaultEditorError(res, error);
+  }
+};
+
+const putVaultDocumentHandler = (req, res) => {
+  try {
+    const result = localVaultService.updateEditableDocument({
+      slug: req.params.slug,
+      content: req.body?.content,
+      revision: req.body?.revision,
+      actor: 'ADMIN_VAULT_EDITOR'
+    });
+    return res.setHeader('Cache-Control', 'private, no-store, max-age=0').json({
+      success: true,
+      source_of_truth: 'LOCAL_VAULT',
+      ...result
+    });
+  } catch (error) {
+    logger.warn('[LOCAL_VAULT_EDITOR] Update rejected', { code: error?.code || error?.message, requestId: req.id });
+    return sendVaultEditorError(res, error);
+  }
+};
+syncRouter.get('/admin/vault/documents/:slug', authMiddleware, requireOverseerAdmin, getVaultDocumentHandler);
+syncRouter.put('/admin/vault/documents/:slug', authMiddleware, requireOverseerAdmin, putVaultDocumentHandler);
+
 // 2. Get Drive Auth URL (Aliases: /admin/drive/auth-url, /sync/drive/auth-url, /drive/auth-url)
 const getAuthUrlHandler = (req, res) => {
   try {
@@ -200,8 +279,12 @@ syncRouter.get('/admin/drive/oauth2callback', async (req, res) => {
   }
 });
 
-// 4. Trigger Drive Sync (Aliases: /admin/drive/sync, /sync/drive, /sync/drive/sync, /drive/sync)
-const postSyncHandler = async (req, res) => {
+const CANONICAL_VAULT_SYNC_CONFIRMATION = 'APPLY_CANONICAL_VAULT_SYNC';
+
+// 4. Refresh SQLite/RAG from the canonical Content/ Markdown tree. Preview
+// is the safe default; apply requires an explicit acknowledgement because it
+// updates searchable/indexed projections and graph metadata.
+const postVaultSyncHandler = async (req, res) => {
   let dryRun;
   try {
     dryRun = parseBooleanFlag(req.body?.dry_run ?? req.query?.dry_run, true);
@@ -212,41 +295,42 @@ const postSyncHandler = async (req, res) => {
     });
   }
 
-  if (!dryRun && req.body?.confirm !== DRIVE_PULL_CONFIRMATION) {
+  if (!dryRun && req.body?.confirm !== CANONICAL_VAULT_SYNC_CONFIRMATION) {
     return res.status(400).json({
-      error: 'DRIVE_SYNC_CONFIRMATION_REQUIRED',
-      message: `confirm must equal ${DRIVE_PULL_CONFIRMATION}.`
+      success: false,
+      error: 'VAULT_SYNC_CONFIRMATION_REQUIRED',
+      message: `confirm must equal ${CANONICAL_VAULT_SYNC_CONFIRMATION}.`,
+      source_of_truth: 'LOCAL_VAULT'
     });
   }
 
   try {
-    logger.info(`[DRIVE_SYNC] ${dryRun ? 'Preview' : 'Pull'} requested via Admin API`);
-    const reconcile = () => driveSyncService.syncAll('ADMIN_DASHBOARD', {
-      dryRun,
-      // A normal reconciliation request must never overwrite Drive content.
-      pushFirst: false
+    logger.info(`[LOCAL_VAULT_SYNC] ${dryRun ? 'Preview' : 'Apply'} requested via Admin API`);
+    const sync = () => localVaultService.sync({
+      actor: dryRun ? 'ADMIN_VAULT_SYNC_PREVIEW' : 'ADMIN_VAULT_SYNC_APPLY',
+      dryRun
     });
     const results = dryRun
-      ? await reconcile()
-      : await runExclusiveDriveMutation('DRIVE_PULL_TO_DATABASE', reconcile);
+      ? await sync()
+      : await runExclusiveVaultMutation('CANONICAL_VAULT_SYNC', sync);
     const errors = Array.isArray(results.errors) ? results.errors : [];
-    const processed = results.processed ?? results.synced ?? 0;
+    const processed = results.processed ?? 0;
     const completeFailure = errors.length > 0 && processed === 0;
     const partial = errors.length > 0 && processed > 0;
 
     if (completeFailure) {
-      logger.error('[DRIVE_SYNC] Reconciliation failed before any document was processed.', {
+      logger.error('[LOCAL_VAULT_SYNC] Sync failed before any document was processed.', {
         errorCount: errors.length,
         dryRun
       });
     } else if (partial) {
-      logger.warn('[DRIVE_SYNC] Reconciliation completed with partial errors.', {
+      logger.warn('[LOCAL_VAULT_SYNC] Sync completed with partial errors.', {
         processed,
         errorCount: errors.length,
         dryRun
       });
     } else {
-      logger.success(`[DRIVE_SYNC] Complete: ${processed} files processed (${results.created || 0} new, ${results.updated || 0} updated)`);
+      logger.success(`[LOCAL_VAULT_SYNC] ${dryRun ? 'Preview' : 'Apply'} complete: ${processed} files processed`);
     }
 
     return res.status(completeFailure ? 502 : 200).json({
@@ -254,23 +338,37 @@ const postSyncHandler = async (req, res) => {
       success: errors.length === 0,
       partial,
       dry_run: dryRun,
+      source_of_truth: 'LOCAL_VAULT',
+      projection_mode: 'SQLITE_RAG_FROM_VAULT',
       report: results
     });
   } catch (err) {
-    if (err.code === 'DRIVE_OPERATION_IN_PROGRESS') {
+    if (err.code === 'VAULT_OPERATION_IN_PROGRESS') {
       return res.status(409).json({
         error: err.code,
         active_operation: err.activeOperation
       });
     }
-    logger.error('Drive sync failed', err);
-    return res.status(500).json({ error: 'DRIVE_SYNC_FAILED', message: err.message });
+    logger.error('Canonical vault sync failed', err);
+    return res.status(500).json({ error: 'LOCAL_VAULT_SYNC_FAILED', message: err.message });
   }
 };
-syncRouter.post('/admin/drive/sync', authMiddleware, postSyncHandler);
-syncRouter.post('/sync/drive', authMiddleware, postSyncHandler);
-syncRouter.post('/sync/drive/sync', authMiddleware, postSyncHandler);
-syncRouter.post('/drive/sync', authMiddleware, postSyncHandler);
+syncRouter.post('/admin/vault/sync', authMiddleware, requireOverseerAdmin, postVaultSyncHandler);
+syncRouter.post('/vault/sync', authMiddleware, requireOverseerAdmin, postVaultSyncHandler);
+
+// Kept as explicit, fail-closed compatibility endpoints. A cloud document
+// cannot enter the canonical local Vault path through an old bookmark,
+// automation, or an accidentally re-enabled Drive credential.
+const rejectDrivePullHandler = (_req, res) => res.status(409).json({
+  error: 'CLOUD_PULL_DISABLED',
+  message: 'A Google Drive csak opcionális tükör vagy helyreállítási cél; a kanonikus tartalom a helyi Content Vaultban van.',
+  source_of_truth: 'LOCAL_VAULT',
+  vault_sync_endpoint: '/api/admin/vault/sync'
+});
+syncRouter.post('/admin/drive/sync', authMiddleware, rejectDrivePullHandler);
+syncRouter.post('/sync/drive', authMiddleware, rejectDrivePullHandler);
+syncRouter.post('/sync/drive/sync', authMiddleware, rejectDrivePullHandler);
+syncRouter.post('/drive/sync', authMiddleware, rejectDrivePullHandler);
 
 const EMPTY_DRIVE_REPAIR_CONFIRMATION = 'REPAIR_EMPTY_DRIVE_FILES';
 const OAUTH_REHOME_CONFIRMATION = 'REHOME_EMPTY_SERVICE_ACCOUNT_FILES_TO_OAUTH_USER';

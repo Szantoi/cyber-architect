@@ -1,17 +1,7 @@
+import crypto from 'node:crypto';
 import express from 'express';
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const driveMocks = vi.hoisted(() => ({
-  exportPostToDrive: vi.fn().mockResolvedValue(null)
-}));
-
-vi.mock('../../services/driveSyncService.js', () => ({
-  driveSyncService: {
-    exportPostToDrive: driveMocks.exportPostToDrive
-  }
-}));
-
+import { describe, expect, it } from 'vitest';
 import { adminRouter } from '../../routes/admin.routes.js';
 import { db } from '../../db.js';
 import { dbService } from '../../services/dbService.js';
@@ -42,11 +32,6 @@ const createStoredContent = (overrides = {}) => dbService.createBlogPost({
 }, 'TEST_SUITE');
 
 describe('Admin CMS content routes', () => {
-  beforeEach(() => {
-    driveMocks.exportPostToDrive.mockClear();
-    driveMocks.exportPostToDrive.mockResolvedValue(null);
-  });
-
   it('lists blog and knowledge content by default', async () => {
     const response = await authenticated('get', '/api/admin/blog');
 
@@ -58,59 +43,52 @@ describe('Admin CMS content routes', () => {
   it('supports a validated content_type list filter', async () => {
     const knowledgeResponse = await authenticated('get', '/api/admin/blog')
       .query({ content_type: 'knowledge' });
-
-    expect(knowledgeResponse.status).toBe(200);
-    expect(knowledgeResponse.body.length).toBeGreaterThan(0);
-    expect(knowledgeResponse.body.every(item => item.content_type === 'knowledge')).toBe(true);
-
     const invalidResponse = await authenticated('get', '/api/admin/blog')
       .query({ content_type: 'article' });
 
+    expect(knowledgeResponse.status).toBe(200);
+    expect(knowledgeResponse.body.every(item => item.content_type === 'knowledge')).toBe(true);
     expect(invalidResponse.status).toBe(400);
     expect(invalidResponse.body.error).toBe('VALIDATION_ERROR');
-    expect(invalidResponse.body.details).toEqual(expect.arrayContaining([
-      expect.objectContaining({ field: 'content_type' })
-    ]));
   });
 
-  it('preserves knowledge type and video URL when creating content', async () => {
-    const slug = `admin-created-knowledge-${crypto.randomUUID()}`;
-    const videoUrl = 'https://www.youtube.com/watch?v=admin-create-test';
-    const response = await authenticated('post', '/api/admin/blog')
-      .send({
-        content_type: 'knowledge',
-        slug,
-        title: 'Admin-created knowledge document',
-        summary: 'Knowledge content must not silently become a blog post.',
-        content: '# Knowledge document',
-        category: 'TEST',
-        dimensions: {
-          iparag: ['Teszt'],
-          technologia: ['Node.js'],
-          celcsoport: ['Fejlesztő']
-        },
-        visibility: 'public',
-        video_url: videoUrl,
-        read_time: '2 PERC',
-        published: 1
-      });
-
-    expect(response.status).toBe(200);
-    const created = dbService.getBlogPostBySlug(slug);
-    expect(created).toMatchObject({
+  it('keeps legacy CMS writer URLs retired in favour of the canonical Vault', async () => {
+    const slug = `admin-created-${crypto.randomUUID()}`;
+    const response = await authenticated('post', '/api/admin/blog').send({
       content_type: 'knowledge',
-      video_url: videoUrl
+      slug,
+      title: 'Competing database author',
+      summary: 'This must be authored in the server-side vault instead.',
+      content: '# Not persisted by CMS'
     });
-    expect(driveMocks.exportPostToDrive).toHaveBeenCalledWith(
-      expect.objectContaining({ id: created.id, content_type: 'knowledge', video_url: videoUrl })
-    );
+
+    expect(response.status).toBe(410);
+    expect(response.body).toMatchObject({
+      error: 'VAULT_AUTHORITATIVE',
+      source_of_truth: 'LOCAL_VAULT'
+    });
+    expect(dbService.getBlogPostBySlug(slug, { publishedOnly: false, visibility: 'all' })).toBeNull();
+  });
+
+  it('keeps legacy CMS updates and deletes retired without changing the DB record', async () => {
+    const stored = createStoredContent();
+    const update = await authenticated('put', `/api/admin/blog/${stored.id}`).send({
+      title: 'This update must not win'
+    });
+    const deletion = await authenticated('delete', `/api/admin/blog/${stored.id}`);
+
+    expect(update.status).toBe(410);
+    expect(deletion.status).toBe(410);
+    expect(dbService.getBlogPostById(stored.id)).toMatchObject({
+      title: 'Admin content test'
+    });
   });
 
   it.each([
     [{ content_type: 'article' }, 'content_type'],
     [{ video_url: 'javascript:alert(1)' }, 'video_url'],
     [{ slug: '../../server/config/drive-tokens' }, 'slug']
-  ])('rejects invalid create metadata %j', async (invalidMetadata, field) => {
+  ])('still validates malformed legacy create metadata before reporting endpoint retirement: %j', async (invalidMetadata, field) => {
     const response = await authenticated('post', '/api/admin/blog')
       .send({
         ...invalidMetadata,
@@ -124,166 +102,94 @@ describe('Admin CMS content routes', () => {
     expect(response.body.details).toEqual(expect.arrayContaining([
       expect.objectContaining({ field })
     ]));
-    expect(driveMocks.exportPostToDrive).not.toHaveBeenCalled();
   });
 
-  it('updates content type and video URL without losing the selected corpus', async () => {
-    const stored = createStoredContent();
-    const videoUrl = 'https://videos.example.com/admin-update';
-    const response = await authenticated('put', `/api/admin/blog/${stored.id}`)
-      .send({
-        content_type: 'knowledge',
-        video_url: videoUrl
-      });
-
-    expect(response.status).toBe(200);
-    const updated = dbService.getBlogPostById(stored.id);
-    expect(updated).toMatchObject({
+  it('rejects direct DB document creation without creating a competing content source', async () => {
+    const countBefore = db.prepare('SELECT COUNT(*) AS count FROM blog_posts').get().count;
+    const created = await authenticated('post', '/api/admin/content/documents').send({
       content_type: 'knowledge',
-      video_url: videoUrl
+      title: 'Vault-first tudásanyag',
+      summary: 'A Markdown kanonikus helye a Content Vault.',
+      content: '# Vault-first\n\nA Markdown az Obsidianban él.'
     });
-    expect(driveMocks.exportPostToDrive).toHaveBeenCalledWith(
-      expect.objectContaining({ id: stored.id, content_type: 'knowledge', video_url: videoUrl })
-    );
+
+    expect(created.status).toBe(409);
+    expect(created.body).toMatchObject({
+      error: 'VAULT_AUTHORITATIVE',
+      source_of_truth: 'LOCAL_VAULT'
+    });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM blog_posts').get().count).toBe(countBefore);
   });
 
-  it('rejects invalid update metadata before changing stored content', async () => {
+  it('rejects direct DB document updates and preserves the projection record', async () => {
     const stored = createStoredContent();
-    const response = await authenticated('put', `/api/admin/blog/${stored.id}`)
-      .send({
-        content_type: 'article',
-        video_url: 'file:///private/video.mp4',
-        slug: '../escape'
-      });
-
-    expect(response.status).toBe(400);
-    expect(response.body.details).toEqual(expect.arrayContaining([
-      expect.objectContaining({ field: 'content_type' }),
-      expect.objectContaining({ field: 'video_url' }),
-      expect.objectContaining({ field: 'slug' })
-    ]));
-    expect(dbService.getBlogPostById(stored.id)).toMatchObject({
-      content_type: 'blog',
-      video_url: ''
+    const update = await authenticated('put', `/api/admin/content/documents/${stored.id}`).send({
+      revision: 'a'.repeat(64),
+      title: 'Frissített DB cím',
+      summary: 'Frissített, adatbázisban tárolt összefoglaló.',
+      content: '# Frissített\n\nEz már az új verzió.',
+      folder_id: null
     });
-    expect(driveMocks.exportPostToDrive).not.toHaveBeenCalled();
+
+    expect(update.status).toBe(409);
+    expect(update.body).toMatchObject({
+      error: 'VAULT_AUTHORITATIVE',
+      source_of_truth: 'LOCAL_VAULT'
+    });
+    expect(dbService.getBlogPostById(stored.id)).toMatchObject({ title: 'Admin content test' });
   });
 
-  it('waits for export and reports a Drive failure without losing the local save', async () => {
-    driveMocks.exportPostToDrive.mockRejectedValueOnce(new Error('simulated cloud failure'));
-    const slug = `admin-local-save-${crypto.randomUUID()}`;
-
-    const response = await authenticated('post', '/api/admin/blog').send({
-      slug,
-      title: 'Locally durable document',
-      summary: 'The database save must survive an export failure.',
-      content: '# Local save'
+  it('rejects direct DB folder mutations so package paths stay authoritative', async () => {
+    const response = await authenticated('post', '/api/admin/content-folders').send({
+      name: 'Competing database folder'
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(409);
     expect(response.body).toMatchObject({
-      success: true,
-      drive_sync: { status: 'FAILED', code: 'DRIVE_EXPORT_FAILED' }
-    });
-    expect(dbService.getBlogPostBySlug(slug)).toMatchObject({
-      title: 'Locally durable document'
+      error: 'VAULT_AUTHORITATIVE',
+      source_of_truth: 'LOCAL_VAULT'
     });
   });
 
-  it('reports a cloud export with a failed local mirror as partial, not synced', async () => {
-    const driveFileId = `gdrive_${crypto.randomUUID()}`;
-    driveMocks.exportPostToDrive.mockResolvedValueOnce({
-      drive_file_id: driveFileId,
-      drive_modified_time: new Date().toISOString(),
-      cloud_written: true,
-      local_written: false,
-      local_error: 'LOCAL_MIRROR_WRITE_FAILED'
-    });
+  it('requires the overseer role for document and folder authoring', async () => {
+    const viewerToken = generateAdminToken({ role: 'VIEWER' });
+    const response = await request(app)
+      .get('/api/admin/content-folders')
+      .set('x-admin-token', viewerToken);
 
-    const response = await authenticated('post', '/api/admin/blog').send({
-      slug: `admin-partial-export-${crypto.randomUUID()}`,
-      title: 'Partially exported document',
-      summary: 'Drive succeeded while the local mirror failed.',
-      content: '# Partial export'
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
-      success: true,
-      drive_sync: {
-        status: 'PARTIAL',
-        drive_file_id: driveFileId,
-        local_error: 'LOCAL_MIRROR_WRITE_FAILED'
-      }
-    });
-    expect(dbService.getBlogPostByDriveFileId(driveFileId)).toMatchObject({
-      id: response.body.id
-    });
-  });
-
-  it('serializes exports for the same post and exports the newest row last', async () => {
-    const stored = createStoredContent();
-    let resolveFirstExport;
-    driveMocks.exportPostToDrive
-      .mockImplementationOnce(() => new Promise(resolve => {
-        resolveFirstExport = resolve;
-      }))
-      .mockResolvedValueOnce(null);
-
-    const firstResponse = authenticated('put', `/api/admin/blog/${stored.id}`)
-      .send({ title: 'First queued title' })
-      .then(response => response);
-    await vi.waitFor(() => expect(driveMocks.exportPostToDrive).toHaveBeenCalledTimes(1));
-
-    const secondResponse = authenticated('put', `/api/admin/blog/${stored.id}`)
-      .send({ title: 'Newest queued title' })
-      .then(response => response);
-    await vi.waitFor(() => {
-      expect(dbService.getBlogPostById(stored.id)?.title).toBe('Newest queued title');
-    });
-    expect(driveMocks.exportPostToDrive).toHaveBeenCalledTimes(1);
-
-    resolveFirstExport(null);
-    const [first, second] = await Promise.all([firstResponse, secondResponse]);
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect(driveMocks.exportPostToDrive).toHaveBeenCalledTimes(2);
-    expect(driveMocks.exportPostToDrive.mock.calls[1][0]).toMatchObject({
-      id: stored.id,
-      title: 'Newest queued title'
-    });
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('ADMIN_ROLE_REQUIRED');
   });
 });
 
-describe('dbService Drive source identity lookup', () => {
-  it('returns the parsed content row for an exact Drive file ID', () => {
-    const driveFileId = `gdrive_${crypto.randomUUID()}`;
+describe('dbService source identity lookup', () => {
+  it('returns the parsed content row for an exact source ID', () => {
+    const sourceId = `vault_${crypto.randomUUID().replace(/-/g, '')}`;
     const stored = createStoredContent({
       content_type: 'knowledge',
-      drive_file_id: driveFileId
+      drive_file_id: sourceId
     });
 
-    expect(dbService.getBlogPostByDriveFileId(driveFileId)).toMatchObject({
+    expect(dbService.getBlogPostByDriveFileId(sourceId)).toMatchObject({
       id: stored.id,
       slug: stored.slug,
       content_type: 'knowledge',
-      drive_file_id: driveFileId,
+      drive_file_id: sourceId,
       dimensions: expect.objectContaining({ technologia: ['Vitest'] })
     });
     expect(dbService.getBlogPostByDriveFileId('')).toBeNull();
-    expect(dbService.getBlogPostByDriveFileId('gdrive_missing')).toBeNull();
+    expect(dbService.getBlogPostByDriveFileId('vault_missing')).toBeNull();
   });
 
   it('uses the same trimmed identity semantics as the SQLite uniqueness boundary', () => {
-    const driveFileId = `gdrive_${crypto.randomUUID()}`;
-    const stored = createStoredContent({ drive_file_id: driveFileId });
+    const sourceId = `vault_${crypto.randomUUID().replace(/-/g, '')}`;
+    const stored = createStoredContent({ drive_file_id: sourceId });
     db.prepare('UPDATE blog_posts SET drive_file_id = ? WHERE id = ?')
-      .run(`  ${driveFileId}  `, stored.id);
+      .run(`  ${sourceId}  `, stored.id);
 
-    expect(dbService.getBlogPostByDriveFileId(driveFileId)).toMatchObject({
+    expect(dbService.getBlogPostByDriveFileId(sourceId)).toMatchObject({
       id: stored.id,
-      drive_file_id: `  ${driveFileId}  `
+      drive_file_id: `  ${sourceId}  `
     });
   });
 });

@@ -3,6 +3,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { syncRouter } from '../../routes/sync.routes.js';
 import { driveSyncService } from '../../services/driveSyncService.js';
+import { localVaultService } from '../../services/localVaultService.js';
 import { generateAdminToken } from '../../security/auth.js';
 
 const app = express();
@@ -19,7 +20,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function postSync(body) {
+function postVaultSync(body) {
+  return request(app)
+    .post('/api/admin/vault/sync')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send(body);
+}
+
+function postLegacyDriveSync(body) {
   return request(app)
     .post('/api/admin/drive/sync')
     .set('Authorization', `Bearer ${adminToken}`)
@@ -40,46 +48,118 @@ function postOAuthRehome(body) {
     .send(body);
 }
 
-describe('Drive synchronization route safety', () => {
-  it('runs an explicitly confirmed pull-only reconciliation', async () => {
-    const syncSpy = vi.spyOn(driveSyncService, 'syncAll').mockResolvedValue({
+function getVaultDocument(slug, token = adminToken) {
+  return request(app)
+    .get(`/api/admin/vault/documents/${encodeURIComponent(slug)}`)
+    .set('Authorization', `Bearer ${token}`);
+}
+
+function putVaultDocument(slug, body, token = adminToken) {
+  return request(app)
+    .put(`/api/admin/vault/documents/${encodeURIComponent(slug)}`)
+    .set('Authorization', `Bearer ${token}`)
+    .send(body);
+}
+
+describe('Vault and Drive synchronization route safety', () => {
+  it('serves the canonical Vault editor only to an overseer administrator', async () => {
+    const slug = 'inline-vault-route-test';
+    const viewerToken = generateAdminToken({ role: 'VIEWER' });
+    const editable = {
+      slug,
+      source_path: 'Content/01_Test/inline-vault-route-test/index.md',
+      content: '---\ntitle: Test\nslug: inline-vault-route-test\npresentation_profile: knowledge\n---\n\n# Test\n',
+      revision: 'a'.repeat(64)
+    };
+    const readSpy = vi.spyOn(localVaultService, 'getEditableDocument').mockReturnValue(editable);
+    const updateSpy = vi.spyOn(localVaultService, 'updateEditableDocument').mockReturnValue({
+      document: { ...editable, content: `${editable.content}\nFrissítve.`, revision: 'b'.repeat(64) },
+      sync: { errors: [] }
+    });
+
+    const [anonymous, viewer, read, update] = await Promise.all([
+      request(app).get(`/api/admin/vault/documents/${slug}`),
+      getVaultDocument(slug, viewerToken),
+      getVaultDocument(slug),
+      putVaultDocument(slug, {
+        content: '# Frissített',
+        revision: 'a'.repeat(64)
+      })
+    ]);
+
+    expect(anonymous.status).toBe(401);
+    expect(viewer.status).toBe(403);
+    expect(viewer.body.code).toBe('ADMIN_ROLE_REQUIRED');
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ success: true, source_of_truth: 'LOCAL_VAULT', document: editable });
+    expect(update.status).toBe(200);
+    expect(update.body).toMatchObject({ success: true, source_of_truth: 'LOCAL_VAULT' });
+    expect(readSpy).toHaveBeenCalledWith(slug);
+    expect(updateSpy).toHaveBeenCalledWith({
+      slug,
+      content: '# Frissített',
+      revision: 'a'.repeat(64),
+      actor: 'ADMIN_VAULT_EDITOR'
+    });
+  });
+
+  it('returns the Vault validation error for malformed editor saves', async () => {
+    const error = new Error('A mentéshez érvényes dokumentumverzió szükséges.');
+    error.code = 'VAULT_EDITOR_REVISION_REQUIRED';
+    const updateSpy = vi.spyOn(localVaultService, 'updateEditableDocument').mockImplementation(() => {
+      throw error;
+    });
+    const response = await putVaultDocument('inline-vault-validation-test', {
+      content: '# Hiányzó verzió'
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: 'VAULT_EDITOR_REVISION_REQUIRED',
+      source_of_truth: 'LOCAL_VAULT'
+    });
+    expect(updateSpy).toHaveBeenCalledOnce();
+  });
+
+  it('applies an explicitly confirmed canonical Vault projection refresh', async () => {
+    const syncSpy = vi.spyOn(localVaultService, 'sync').mockReturnValue({
       processed: 2,
-      synced: 2,
       created: 1,
       updated: 1,
       errors: []
     });
 
-    const response = await postSync({
+    const response = await postVaultSync({
       dry_run: false,
-      confirm: 'APPLY_DRIVE_PULL_TO_DATABASE'
+      confirm: 'APPLY_CANONICAL_VAULT_SYNC'
     });
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ success: true, partial: false, dry_run: false });
-    expect(syncSpy).toHaveBeenCalledWith('ADMIN_DASHBOARD', {
-      dryRun: false,
-      pushFirst: false
+    expect(response.body).toMatchObject({
+      success: true,
+      dry_run: false,
+      source_of_truth: 'LOCAL_VAULT',
+      projection_mode: 'SQLITE_RAG_FROM_VAULT'
     });
+    expect(syncSpy).toHaveBeenCalledWith({ actor: 'ADMIN_VAULT_SYNC_APPLY', dryRun: false });
   });
 
   it('supports a write-free preview and rejects ambiguous flags', async () => {
-    const syncSpy = vi.spyOn(driveSyncService, 'syncAll').mockResolvedValue({
+    const syncSpy = vi.spyOn(localVaultService, 'sync').mockReturnValue({
       processed: 1,
-      synced: 0,
       created: 0,
       updated: 0,
       errors: []
     });
 
-    const previewResponse = await postSync({ dry_run: true });
-    const invalidResponse = await postSync({ dry_run: 'yes' });
+    const previewResponse = await postVaultSync({ dry_run: true });
+    const invalidResponse = await postVaultSync({ dry_run: 'yes' });
 
     expect(previewResponse.status).toBe(200);
     expect(previewResponse.body.dry_run).toBe(true);
-    expect(syncSpy).toHaveBeenCalledWith('ADMIN_DASHBOARD', {
-      dryRun: true,
-      pushFirst: false
+    expect(syncSpy).toHaveBeenCalledWith({
+      actor: 'ADMIN_VAULT_SYNC_PREVIEW',
+      dryRun: true
     });
     expect(invalidResponse.status).toBe(400);
     expect(invalidResponse.body.error).toBe('INVALID_SYNC_REQUEST');
@@ -87,51 +167,66 @@ describe('Drive synchronization route safety', () => {
   });
 
   it('defaults to preview and requires an exact confirmation before DB writes', async () => {
-    const syncSpy = vi.spyOn(driveSyncService, 'syncAll').mockResolvedValue({
+    const syncSpy = vi.spyOn(localVaultService, 'sync').mockReturnValue({
       processed: 1,
       created: 0,
       updated: 0,
       errors: []
     });
 
-    const preview = await postSync({});
-    const rejected = await postSync({ dry_run: false });
+    const preview = await postVaultSync({});
+    const rejected = await postVaultSync({ dry_run: false });
 
     expect(preview.status).toBe(200);
     expect(preview.body.dry_run).toBe(true);
     expect(rejected.status).toBe(400);
-    expect(rejected.body.error).toBe('DRIVE_SYNC_CONFIRMATION_REQUIRED');
+    expect(rejected.body.error).toBe('VAULT_SYNC_CONFIRMATION_REQUIRED');
     expect(syncSpy).toHaveBeenCalledTimes(1);
-    expect(syncSpy).toHaveBeenCalledWith('ADMIN_DASHBOARD', {
-      dryRun: true,
-      pushFirst: false
+    expect(syncSpy).toHaveBeenCalledWith({
+      actor: 'ADMIN_VAULT_SYNC_PREVIEW',
+      dryRun: true
     });
   });
 
   it('distinguishes partial reconciliation from a complete source failure', async () => {
-    const syncSpy = vi.spyOn(driveSyncService, 'syncAll');
-    syncSpy.mockResolvedValueOnce({
+    const syncSpy = vi.spyOn(localVaultService, 'sync');
+    syncSpy.mockReturnValueOnce({
       processed: 1,
-      synced: 1,
       created: 1,
       updated: 0,
-      errors: [{ file: 'Blog', error: 'DRIVE_API_ERROR' }]
+      errors: [{ file: 'KnowledgeBase', error: 'VAULT_DOCUMENT_INVALID' }]
     });
-    syncSpy.mockResolvedValueOnce({
+    syncSpy.mockReturnValueOnce({
       processed: 0,
-      synced: 0,
       created: 0,
       updated: 0,
-      errors: [{ file: 'Google Drive', error: 'DRIVE_API_ERROR' }]
+      errors: [{ file: 'KnowledgeBase', error: 'VAULT_DOCUMENT_INVALID' }]
     });
 
-    const partialResponse = await postSync({});
-    const failureResponse = await postSync({});
+    const partialResponse = await postVaultSync({});
+    const failureResponse = await postVaultSync({});
 
     expect(partialResponse.status).toBe(200);
     expect(partialResponse.body).toMatchObject({ success: false, partial: true });
     expect(failureResponse.status).toBe(502);
     expect(failureResponse.body).toMatchObject({ success: false, partial: false });
+  });
+
+  it('rejects legacy Drive pull endpoints before they can call the cloud importer', async () => {
+    const cloudImporter = vi.spyOn(driveSyncService, 'syncAll');
+
+    const response = await postLegacyDriveSync({
+      dry_run: false,
+      confirm: 'APPLY_DRIVE_PULL_TO_DATABASE'
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      error: 'CLOUD_PULL_DISABLED',
+      source_of_truth: 'LOCAL_VAULT',
+      vault_sync_endpoint: '/api/admin/vault/sync'
+    });
+    expect(cloudImporter).not.toHaveBeenCalled();
   });
 
   it('previews empty-file repair by default without authorizing Drive writes', async () => {
@@ -293,65 +388,16 @@ describe('Drive synchronization route safety', () => {
     expect(response.body).toMatchObject({ success: false, partial: false });
   });
 
-  it('rejects a concurrent Drive mutation while an apply operation is active', async () => {
-    let resolveSync;
-    const syncSpy = vi.spyOn(driveSyncService, 'syncAll').mockImplementationOnce(() => (
-      new Promise(resolve => {
-        resolveSync = resolve;
-      })
-    ));
-    const repairSpy = vi.spyOn(driveSyncService, 'repairEmptyCloudFilesFromLocal');
+  it('requires confirmation before it starts a Vault projection mutation', async () => {
+    const syncSpy = vi.spyOn(localVaultService, 'sync');
 
-    const firstRequest = postSync({
+    const response = await postVaultSync({
       dry_run: false,
-      confirm: 'APPLY_DRIVE_PULL_TO_DATABASE'
-    }).then(response => response);
-    await vi.waitFor(() => expect(syncSpy).toHaveBeenCalledTimes(1));
-
-    const concurrentResponse = await postEmptyRepair({
-      dry_run: false,
-      confirm: 'REPAIR_EMPTY_DRIVE_FILES'
-    });
-    expect(concurrentResponse.status).toBe(409);
-    expect(concurrentResponse.body).toMatchObject({
-      error: 'DRIVE_OPERATION_IN_PROGRESS',
-      active_operation: 'DRIVE_PULL_TO_DATABASE'
-    });
-    expect(repairSpy).not.toHaveBeenCalled();
-
-    resolveSync({ processed: 1, created: 1, updated: 0, errors: [] });
-    expect((await firstRequest).status).toBe(200);
-  });
-
-  it('rejects OAuth rehome while another confirmed Drive mutation holds the mutex', async () => {
-    let resolveSync;
-    const syncSpy = vi.spyOn(driveSyncService, 'syncAll').mockImplementationOnce(() => (
-      new Promise(resolve => {
-        resolveSync = resolve;
-      })
-    ));
-    const rehomeSpy = vi.spyOn(driveSyncService, 'rehomeEmptyServiceAccountFilesToOAuth');
-    const firstRequest = postSync({
-      dry_run: false,
-      confirm: 'APPLY_DRIVE_PULL_TO_DATABASE'
-    }).then(response => response);
-    await vi.waitFor(() => expect(syncSpy).toHaveBeenCalledTimes(1));
-
-    const concurrent = await postOAuthRehome({
-      dry_run: false,
-      confirm: 'REHOME_EMPTY_SERVICE_ACCOUNT_FILES_TO_OAUTH_USER',
-      plan_digest: 'd'.repeat(64),
-      expected_rehome_count: 22
+      confirm: 'WRONG_CONFIRMATION'
     });
 
-    expect(concurrent.status).toBe(409);
-    expect(concurrent.body).toMatchObject({
-      error: 'DRIVE_OPERATION_IN_PROGRESS',
-      active_operation: 'DRIVE_PULL_TO_DATABASE'
-    });
-    expect(rehomeSpy).not.toHaveBeenCalled();
-
-    resolveSync({ processed: 1, created: 1, updated: 0, errors: [] });
-    expect((await firstRequest).status).toBe(200);
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ error: 'VAULT_SYNC_CONFIRMATION_REQUIRED' });
+    expect(syncSpy).not.toHaveBeenCalled();
   });
 });

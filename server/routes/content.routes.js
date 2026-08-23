@@ -1,16 +1,24 @@
 import { Router } from 'express';
 import { dbService } from '../services/dbService.js';
 import { logger } from '../logger.js';
+import { adminPreviewMiddleware, getReadScope } from '../middleware/adminPreview.js';
 
 export const contentRouter = Router();
+
+contentRouter.use(adminPreviewMiddleware);
 
 // 1. Get All Public Content (Hero, Settings, Skills, Projects, Recent Blogs)
 contentRouter.get('/content', (req, res) => {
   try {
-    const settings = dbService.getSettings();
+    const readScope = getReadScope(req);
+    const settings = dbService.getPublicSettings();
     const skills = dbService.getSkills();
     const projects = dbService.getProjects();
-    const recentBlogs = dbService.getBlogPosts({ publishedOnly: true, limit: 3 });
+    const recentBlogs = dbService.getBlogPosts({
+      publishedOnly: readScope.publishedOnly,
+      visibility: readScope.visibility,
+      limit: 3
+    });
 
     res.json({
       settings,

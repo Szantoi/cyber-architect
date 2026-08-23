@@ -8,6 +8,17 @@ describe('Express API Supertest Integration Suite', () => {
   const adminToken = generateAdminToken({ role: 'OVERSEER_ADMIN' });
 
   describe('Public API Endpoints', () => {
+    it('allows the admin token header in CORS preflight requests', async () => {
+      const res = await request(app)
+        .options('/api/admin/rag-settings')
+        .set('Origin', 'http://127.0.0.1:5173')
+        .set('Access-Control-Request-Method', 'GET')
+        .set('Access-Control-Request-Headers', 'content-type,x-admin-token');
+
+      expect(res.status).toBe(204);
+      expect(res.headers['access-control-allow-headers'].toLowerCase()).toContain('x-admin-token');
+    });
+
     it('GET /api/content returns aggregated portfolio data', async () => {
       const res = await request(app).get('/api/content');
       expect(res.status).toBe(200);

@@ -84,3 +84,16 @@ export function authMiddleware(req, res, next) {
   req.adminUser = decoded;
   next();
 }
+
+/**
+ * Narrows a valid JWT session to the privileged web administrator role.
+ * Keep this separate from token verification so read-only integrations can
+ * deliberately choose their own authorization policy.
+ */
+export function requireOverseerAdmin(req, res, next) {
+  if (req.adminUser?.role === 'OVERSEER_ADMIN') return next();
+  return res.status(403).json({
+    error: 'ACCESS_DENIED: ADMIN_ROLE_REQUIRED',
+    code: 'ADMIN_ROLE_REQUIRED'
+  });
+}

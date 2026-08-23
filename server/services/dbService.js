@@ -6,6 +6,8 @@ import { db, initDatabase } from '../db.js';
 import { verifyPin as verifyHashPin, hashPin } from '../security/auth.js';
 import { getAdminPinPolicyViolations } from '../security/pinPolicy.js';
 import embeddingService from './embeddingService.js';
+import { normalizeRagTuning } from './ragTuning.js';
+import { resolveDocumentPresentation } from './presentationProfile.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,16 +48,60 @@ function generateCanonicalSlug(title) {
   return `${base || 'document'}-${suffix}`;
 }
 
-function assertContentType(value) {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized !== 'blog' && normalized !== 'knowledge') {
-    throw new Error('INVALID_CONTENT_TYPE: Expected blog or knowledge.');
+function resolveStoredPresentation(post) {
+  try {
+    return resolveDocumentPresentation({
+      presentationProfile: post?.presentation_profile,
+      contentType: post?.content_type,
+      fallbackProfile: 'article'
+    });
+  } catch {
+    // A legacy SQLite row predating the additive profile column must remain
+    // readable even if it contains an old or malformed type. Writes are
+    // strict; this compatibility branch is intentionally read-only.
+    return String(post?.content_type || '').trim().toLowerCase() === 'knowledge'
+      ? { presentation_profile: 'knowledge', content_type: 'knowledge' }
+      : { presentation_profile: 'article', content_type: 'blog' };
   }
-  return normalized;
+}
+
+function normalizePresentationProfileFilter(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized || normalized === 'all') return null;
+  return resolveDocumentPresentation({
+    presentationProfile: normalized,
+    fallbackProfile: 'knowledge'
+  }).presentation_profile;
 }
 
 // Ensure database schema is initialized
 initDatabase();
+
+const BLOG_POST_FOLDER_PATH_CTE = `
+  WITH RECURSIVE folder_paths AS (
+    SELECT id, parent_id, name, name AS folder_path, 0 AS folder_depth
+    FROM content_folders
+    WHERE parent_id IS NULL
+    UNION ALL
+    SELECT child.id,
+      child.parent_id,
+      child.name,
+      folder_paths.folder_path || ' / ' || child.name AS folder_path,
+      folder_paths.folder_depth + 1 AS folder_depth
+    FROM content_folders AS child
+    INNER JOIN folder_paths ON child.parent_id = folder_paths.id
+  )
+`;
+
+function selectBlogPostsWithFolder() {
+  return `${BLOG_POST_FOLDER_PATH_CTE}
+    SELECT b.*, folder_paths.name AS folder_name,
+      folder_paths.folder_path AS folder_path,
+      folder_paths.folder_depth AS folder_depth
+    FROM blog_posts AS b
+    LEFT JOIN folder_paths ON folder_paths.id = b.folder_id
+  `;
+}
 
 export const dbService = {
   // ==========================================
@@ -68,6 +114,69 @@ export const dbService = {
       settings[row.key] = row.value;
     }
     return settings;
+  },
+
+  getPublicSettings() {
+    const { rag_config: _ragConfig, ...publicSettings } = this.getSettings();
+    return publicSettings;
+  },
+
+  getRagSettings() {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('rag_config');
+    return normalizeRagTuning(row?.value);
+  },
+
+  updateRagSettings(configData, actor = 'SYSTEM') {
+    const previousConfig = this.getRagSettings();
+    const nextConfig = normalizeRagTuning(configData);
+
+    db.prepare(`
+      INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run('rag_config', JSON.stringify(nextConfig));
+
+    this.recordAuditLog({
+      action: 'UPDATE_RAG_SETTINGS',
+      entity: 'rag_settings',
+      entity_id: 'global',
+      prev_state: previousConfig,
+      new_state: nextConfig,
+      actor
+    });
+
+    return nextConfig;
+  },
+
+  reindexRagEmbeddings(actor = 'SYSTEM') {
+    const tuning = this.getRagSettings();
+    const posts = db.prepare(`
+      SELECT id, title, summary, content, category, dimensions
+      FROM blog_posts
+      ORDER BY id ASC
+    `).all();
+    const updateEmbedding = db.prepare('UPDATE blog_posts SET embedding = ? WHERE id = ?');
+
+    db.transaction((documents) => {
+      for (const post of documents) {
+        const embedding = embeddingService.generateDocumentEmbedding(post, tuning);
+        updateEmbedding.run(JSON.stringify(embedding), post.id);
+      }
+    })(posts);
+
+    const result = {
+      reindexed: posts.length,
+      tuning
+    };
+    this.recordAuditLog({
+      action: 'REINDEX_RAG_EMBEDDINGS',
+      entity: 'rag_embeddings',
+      entity_id: 'all',
+      prev_state: { count: posts.length },
+      new_state: result,
+      actor
+    });
+
+    return result;
   },
 
   updateSettings(settingsData, actor = 'SYSTEM') {
@@ -453,34 +562,39 @@ export const dbService = {
   // ==========================================
   // 5. BLOG POSTS & KNOWLEDGE ITEMS SERVICE
   // ==========================================
-  getBlogPosts({ publishedOnly = false, visibility = 'all', projectId = null, category = null, contentType = 'blog', sortBy = 'recommended', limit = null } = {}) {
-    let sql = 'SELECT * FROM blog_posts WHERE 1=1';
+  getBlogPosts({ publishedOnly = false, visibility = 'all', projectId = null, category = null, contentType = 'blog', presentationProfile = null, sortBy = 'recommended', limit = null } = {}) {
+    let sql = `${selectBlogPostsWithFolder()} WHERE 1=1`;
     const params = [];
 
     if (contentType && contentType !== 'all') {
-      sql += ' AND content_type = ?';
+      sql += ' AND b.content_type = ?';
       params.push(String(contentType));
+    }
+    const profileFilter = normalizePresentationProfileFilter(presentationProfile);
+    if (profileFilter) {
+      sql += ' AND b.presentation_profile = ?';
+      params.push(profileFilter);
     }
 
     if (category && category !== 'ALL') {
-      sql += ' AND category = ?';
+      sql += ' AND b.category = ?';
       params.push(String(category));
     }
 
     if (publishedOnly) {
-      sql += ' AND published = 1';
+      sql += ' AND b.published = 1';
     }
     if (visibility === 'public') {
-      sql += " AND visibility = 'public'";
+      sql += " AND b.visibility = 'public'";
     } else if (visibility === 'private') {
-      sql += " AND visibility = 'private'";
+      sql += " AND b.visibility = 'private'";
     }
     if (projectId && projectId !== 'all') {
-      sql += ' AND project_id = ?';
+      sql += ' AND b.project_id = ?';
       params.push(String(projectId));
     }
 
-    sql += ' ORDER BY created_at DESC, id DESC';
+    sql += ' ORDER BY b.created_at DESC, b.id DESC';
 
     const posts = db.prepare(sql).all(...params);
     let parsedPosts = posts.map(p => {
@@ -535,20 +649,22 @@ export const dbService = {
 
   getBlogPostById(id) {
     if (!id) return null;
-    const post = db.prepare('SELECT * FROM blog_posts WHERE id = ?').get(Number(id));
+    const post = db.prepare(`${selectBlogPostsWithFolder()} WHERE b.id = ?`).get(Number(id));
     return post ? this._parseBlogPost(post) : null;
   },
 
   getBlogPostBySlug(slug, { publishedOnly = false, visibility = 'all' } = {}) {
     if (!slug) return null;
-    let sql = 'SELECT * FROM blog_posts WHERE slug = ?';
+    let sql = `${selectBlogPostsWithFolder()} WHERE b.slug = ?`;
     const params = [String(slug)];
 
     if (publishedOnly) {
-      sql += ' AND published = 1';
+      sql += ' AND b.published = 1';
     }
     if (visibility === 'public') {
-      sql += " AND visibility = 'public'";
+      sql += " AND b.visibility = 'public'";
+    } else if (visibility === 'private') {
+      sql += " AND b.visibility = 'private'";
     }
 
     const post = db.prepare(sql).get(...params);
@@ -559,10 +675,8 @@ export const dbService = {
     const normalizedDriveFileId = String(driveFileId || '').trim();
     if (!normalizedDriveFileId) return null;
 
-    const post = db.prepare(`
-      SELECT *
-      FROM blog_posts
-      WHERE TRIM(drive_file_id) = ?
+    const post = db.prepare(`${selectBlogPostsWithFolder()}
+      WHERE TRIM(b.drive_file_id) = ?
       LIMIT 1
     `).get(normalizedDriveFileId);
     return post ? this._parseBlogPost(post) : null;
@@ -576,9 +690,10 @@ export const dbService = {
     } catch {
       dimensions = {};
     }
+    const presentation = resolveStoredPresentation(post);
     return {
       ...post,
-      content_type: post.content_type || 'blog',
+      ...presentation,
       drive_path: normalizeDrivePath(post.drive_path),
       dimensions
     };
@@ -587,7 +702,8 @@ export const dbService = {
   createBlogPost({
     id,
     project_id = 'prj_rag_enterprise',
-    content_type = 'blog',
+    content_type,
+    presentation_profile,
     slug,
     title,
     summary,
@@ -600,34 +716,42 @@ export const dbService = {
     drive_path = '',
     drive_file_id = '',
     drive_modified_time = '',
+    folder_id = null,
     embedding = [],
     read_time = '4 PERC',
     created_at,
     published = 1
-  }, actor = 'SYSTEM') {
+  }, actor = 'SYSTEM', { audit = true } = {}) {
     if (!title || !summary || !content) {
       throw new Error('MISSING_PARAMETER: title, summary, and content are required');
     }
 
     const finalSlug = slug ? assertCanonicalSlug(slug) : generateCanonicalSlug(title);
     const postDate = String(created_at || new Date().toISOString().split('T')[0]);
+    const updatedAt = new Date().toISOString();
     const dimsJson = JSON.stringify(typeof dimensions === 'object' ? dimensions : {});
+    const presentation = resolveDocumentPresentation({
+      presentationProfile: presentation_profile,
+      contentType: content_type,
+      fallbackProfile: 'article'
+    });
 
     // Generate dense semantic embedding vector if not provided
     const vectorArray = (Array.isArray(embedding) && embedding.length > 0)
       ? embedding
-      : embeddingService.generateDocumentEmbedding({ title, summary, content, category, dimensions });
+      : embeddingService.generateDocumentEmbedding({ title, summary, content, category, dimensions }, this.getRagSettings());
     const embedJson = JSON.stringify(vectorArray);
 
     let info;
     if (id) {
       info = db.prepare(`
-        INSERT INTO blog_posts (id, project_id, content_type, slug, title, summary, content, category, dimensions, visibility, audio_url, video_url, drive_path, drive_file_id, drive_modified_time, embedding, read_time, created_at, published)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO blog_posts (id, project_id, content_type, presentation_profile, slug, title, summary, content, category, dimensions, visibility, audio_url, video_url, drive_path, drive_file_id, drive_modified_time, folder_id, embedding, read_time, created_at, updated_at, published)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         Number(id),
         String(project_id || 'prj_general'),
-        assertContentType(content_type || 'blog'),
+        presentation.content_type,
+        presentation.presentation_profile,
         finalSlug,
         String(title),
         String(summary),
@@ -640,18 +764,21 @@ export const dbService = {
         normalizeDrivePath(drive_path),
         String(drive_file_id || '').trim(),
         String(drive_modified_time || ''),
+        folder_id || null,
         embedJson,
         String(read_time || '4 PERC'),
         postDate,
+        updatedAt,
         Number(published)
       );
     } else {
       info = db.prepare(`
-        INSERT INTO blog_posts (project_id, content_type, slug, title, summary, content, category, dimensions, visibility, audio_url, video_url, drive_path, drive_file_id, drive_modified_time, embedding, read_time, created_at, published)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO blog_posts (project_id, content_type, presentation_profile, slug, title, summary, content, category, dimensions, visibility, audio_url, video_url, drive_path, drive_file_id, drive_modified_time, folder_id, embedding, read_time, created_at, updated_at, published)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         String(project_id || 'prj_general'),
-        assertContentType(content_type || 'blog'),
+        presentation.content_type,
+        presentation.presentation_profile,
         finalSlug,
         String(title),
         String(summary),
@@ -664,9 +791,11 @@ export const dbService = {
         normalizeDrivePath(drive_path),
         String(drive_file_id || '').trim(),
         String(drive_modified_time || ''),
+        folder_id || null,
         embedJson,
         String(read_time || '4 PERC'),
         postDate,
+        updatedAt,
         Number(published)
       );
     }
@@ -674,14 +803,16 @@ export const dbService = {
     const createdId = id ? Number(id) : info.lastInsertRowid;
     const created = this.getBlogPostById(createdId);
 
-    this.recordAuditLog({
-      action: 'CREATE_BLOG_POST',
-      entity: 'blog_posts',
-      entity_id: String(createdId),
-      prev_state: null,
-      new_state: created,
-      actor
-    });
+    if (audit) {
+      this.recordAuditLog({
+        action: 'CREATE_BLOG_POST',
+        entity: 'blog_posts',
+        entity_id: String(createdId),
+        prev_state: null,
+        new_state: created,
+        actor
+      });
+    }
 
     return created;
   },
@@ -689,6 +820,7 @@ export const dbService = {
   updateBlogPost(id, {
     project_id,
     content_type,
+    presentation_profile,
     slug,
     title,
     summary,
@@ -701,10 +833,11 @@ export const dbService = {
     drive_path,
     drive_file_id,
     drive_modified_time,
+    folder_id,
     embedding,
     read_time,
     published
-  }, actor = 'SYSTEM') {
+  }, actor = 'SYSTEM', { audit = true } = {}) {
     if (!id) throw new Error('MISSING_PARAMETER: Post id is required');
     const prevState = this.getBlogPostById(id);
     if (!prevState) throw new Error('POST_NOT_FOUND');
@@ -714,10 +847,13 @@ export const dbService = {
     const nextContent = content !== undefined ? String(content) : prevState.content;
     const nextCategory = category !== undefined ? String(category) : prevState.category;
     const nextDimensions = dimensions !== undefined ? dimensions : (prevState.dimensions || {});
-    const nextContentType = content_type !== undefined
-      ? assertContentType(content_type)
-      : assertContentType(prevState.content_type || 'blog');
+    const nextPresentation = resolveDocumentPresentation({
+      presentationProfile: presentation_profile,
+      contentType: content_type,
+      fallbackProfile: prevState.presentation_profile || 'article'
+    });
     const nextSlug = slug !== undefined ? assertCanonicalSlug(slug) : prevState.slug;
+    const nextFolderId = folder_id !== undefined ? (folder_id || null) : (prevState.folder_id || null);
 
     const dimsJson = JSON.stringify(typeof nextDimensions === 'object' ? nextDimensions : {});
 
@@ -730,17 +866,18 @@ export const dbService = {
         content: nextContent,
         category: nextCategory,
         dimensions: nextDimensions
-      });
+      }, this.getRagSettings());
     }
     const embedJson = vectorArray ? JSON.stringify(vectorArray) : (typeof prevState.embedding === 'string' ? prevState.embedding : JSON.stringify(prevState.embedding || []));
 
     db.prepare(`
       UPDATE blog_posts
-      SET project_id = ?, content_type = ?, slug = ?, title = ?, summary = ?, content = ?, category = ?, dimensions = ?, visibility = ?, audio_url = ?, video_url = ?, drive_path = ?, drive_file_id = ?, drive_modified_time = ?, embedding = ?, read_time = ?, published = ?
+      SET project_id = ?, content_type = ?, presentation_profile = ?, slug = ?, title = ?, summary = ?, content = ?, category = ?, dimensions = ?, visibility = ?, audio_url = ?, video_url = ?, drive_path = ?, drive_file_id = ?, drive_modified_time = ?, folder_id = ?, embedding = ?, read_time = ?, updated_at = ?, published = ?
       WHERE id = ?
     `).run(
       project_id !== undefined ? String(project_id) : prevState.project_id,
-      nextContentType,
+      nextPresentation.content_type,
+      nextPresentation.presentation_profile,
       nextSlug,
       nextTitle,
       nextSummary,
@@ -753,22 +890,26 @@ export const dbService = {
       drive_path !== undefined ? normalizeDrivePath(drive_path) : normalizeDrivePath(prevState.drive_path),
       drive_file_id !== undefined ? String(drive_file_id).trim() : prevState.drive_file_id,
       drive_modified_time !== undefined ? String(drive_modified_time) : prevState.drive_modified_time,
+      nextFolderId,
       embedJson,
       read_time !== undefined ? String(read_time) : prevState.read_time,
+      new Date().toISOString(),
       published !== undefined ? Number(published) : prevState.published,
       Number(id)
     );
 
 
     const newState = this.getBlogPostById(id);
-    this.recordAuditLog({
-      action: 'UPDATE_BLOG_POST',
-      entity: 'blog_posts',
-      entity_id: String(id),
-      prev_state: prevState,
-      new_state: newState,
-      actor
-    });
+    if (audit) {
+      this.recordAuditLog({
+        action: 'UPDATE_BLOG_POST',
+        entity: 'blog_posts',
+        entity_id: String(id),
+        prev_state: prevState,
+        new_state: newState,
+        actor
+      });
+    }
 
     return newState;
   },
@@ -795,13 +936,18 @@ export const dbService = {
   // ==========================================
   // 6. BLOG RAG SEARCH ENGINE (Isolated Scope)
   // ==========================================
-  searchBlog({ query = '', category = 'ALL', sortBy = 'recommended', visibility = 'public', limit = 20 } = {}) {
+  searchBlog({ query = '', category = 'ALL', sortBy = 'recommended', visibility = 'public', publishedOnly = true, presentationProfile = null, limit = 20 } = {}) {
+    const ragTuning = this.getRagSettings();
     let sql = `
       SELECT b.*
       FROM blog_posts b
-      WHERE b.content_type = 'blog' AND b.published = 1
+      WHERE b.content_type = 'blog'
     `;
     const params = [];
+
+    if (publishedOnly) {
+      sql += ' AND b.published = 1';
+    }
 
     // Strict Visibility Guard
     if (visibility === 'public') {
@@ -814,6 +960,11 @@ export const dbService = {
     if (category && category !== 'ALL') {
       sql += ' AND b.category = ?';
       params.push(String(category));
+    }
+    const profileFilter = normalizePresentationProfileFilter(presentationProfile);
+    if (profileFilter) {
+      sql += ' AND b.presentation_profile = ?';
+      params.push(profileFilter);
     }
 
     sql += ' ORDER BY b.created_at DESC, b.id DESC';
@@ -835,7 +986,7 @@ export const dbService = {
         }
 
         if (!Array.isArray(docVector) || docVector.length === 0) {
-          docVector = embeddingService.generateDocumentEmbedding(item);
+          docVector = embeddingService.generateDocumentEmbedding(item, ragTuning);
         }
 
         // 1. Dense Cosine Similarity (0.0 to 1.0)
@@ -919,10 +1070,13 @@ export const dbService = {
     return rawResults.slice(0, Number(limit) || 20);
   },
 
-  getBlogCategories({ visibility = 'public' } = {}) {
-    let sql = "SELECT category, count(*) as count FROM blog_posts WHERE content_type = 'blog' AND published = 1";
+  getBlogCategories({ visibility = 'public', publishedOnly = true } = {}) {
+    let sql = "SELECT category, count(*) as count FROM blog_posts WHERE content_type = 'blog'";
+    if (publishedOnly) sql += ' AND published = 1';
     if (visibility === 'public') {
       sql += " AND visibility = 'public'";
+    } else if (visibility === 'private') {
+      sql += " AND visibility = 'private'";
     }
     sql += " GROUP BY category ORDER BY count DESC";
 
@@ -930,9 +1084,10 @@ export const dbService = {
     return rows.map(r => ({ category: r.category, count: r.count }));
   },
 
-  getRelatedBlogPosts(slug, limit = 3) {
+  getRelatedBlogPosts(slug, limit = 3, { visibility = 'public', publishedOnly = true } = {}) {
     if (!slug) return [];
-    const currentPost = this.getBlogPostBySlug(slug, { publishedOnly: true, visibility: 'public' });
+    const ragTuning = this.getRagSettings();
+    const currentPost = this.getBlogPostBySlug(slug, { publishedOnly, visibility });
     if (!currentPost) return [];
 
     let targetVector = [];
@@ -942,10 +1097,10 @@ export const dbService = {
       targetVector = [];
     }
     if (!Array.isArray(targetVector) || targetVector.length === 0) {
-      targetVector = embeddingService.generateDocumentEmbedding(currentPost);
+      targetVector = embeddingService.generateDocumentEmbedding(currentPost, ragTuning);
     }
 
-    const allBlogs = this.getBlogPosts({ publishedOnly: true, visibility: 'public', contentType: 'blog' })
+    const allBlogs = this.getBlogPosts({ publishedOnly, visibility, contentType: 'blog' })
       .filter(p => p.slug !== slug);
 
     const scored = allBlogs.map(post => {
@@ -956,7 +1111,7 @@ export const dbService = {
         vec = [];
       }
       if (!Array.isArray(vec) || vec.length === 0) {
-        vec = embeddingService.generateDocumentEmbedding(post);
+        vec = embeddingService.generateDocumentEmbedding(post, ragTuning);
       }
       const similarity = embeddingService.cosineSimilarity(vec, targetVector);
       return {
@@ -964,6 +1119,8 @@ export const dbService = {
         slug: post.slug,
         title: post.title,
         summary: post.summary,
+        content_type: post.content_type,
+        presentation_profile: post.presentation_profile,
         category: post.category,
         read_time: post.read_time,
         created_at: post.created_at,
@@ -978,7 +1135,8 @@ export const dbService = {
   // ==========================================
   // 7. KNOWLEDGE BASE RAG ENGINE (Isolated Scope)
   // ==========================================
-  searchKnowledge({ query = '', projectId = 'all', iparag, technologia, celcsoport, visibility = 'public', publishedOnly = false, mode: _mode = 'hybrid', limit = 20, contentType = 'knowledge' } = {}) {
+  searchKnowledge({ query = '', projectId = 'all', iparag, technologia, celcsoport, visibility = 'public', publishedOnly = false, mode: _mode = 'hybrid', limit = 20, contentType = 'knowledge', presentationProfile = null } = {}) {
+    const ragTuning = this.getRagSettings();
     let sql = `
       SELECT b.*, kp.name as project_name, kp.color as project_color, kp.icon as project_icon
       FROM blog_posts b
@@ -991,6 +1149,11 @@ export const dbService = {
     if (contentType && contentType !== 'all') {
       sql += ' AND b.content_type = ?';
       params.push(String(contentType));
+    }
+    const profileFilter = normalizePresentationProfileFilter(presentationProfile);
+    if (profileFilter) {
+      sql += ' AND b.presentation_profile = ?';
+      params.push(profileFilter);
     }
 
     // 1. Strict Visibility Guard
@@ -1054,7 +1217,7 @@ export const dbService = {
         }
 
         if (!Array.isArray(docVector) || docVector.length === 0) {
-          docVector = embeddingService.generateDocumentEmbedding(item);
+          docVector = embeddingService.generateDocumentEmbedding(item, ragTuning);
         }
 
         const cosineScore = embeddingService.cosineSimilarity(docVector, queryVector);
@@ -1074,8 +1237,13 @@ export const dbService = {
         }
 
         const keywordScore = matchCount / Math.max(normTokens.length, 1);
-        const titleBonus = titleMatch ? 0.3 : 0.0;
-        const hybridRelevanceScore = Number(Math.min(1.0, 0.4 * cosineScore + 0.5 * keywordScore + titleBonus).toFixed(4));
+        const titleBonus = titleMatch ? ragTuning.knowledge_title_bonus : 0.0;
+        const hybridRelevanceScore = Number(Math.min(
+          1.0,
+          ragTuning.knowledge_semantic_weight * cosineScore
+            + ragTuning.knowledge_keyword_weight * keywordScore
+            + titleBonus
+        ).toFixed(4));
 
         return {
           ...item,
@@ -1084,17 +1252,24 @@ export const dbService = {
           hybridRelevanceScore
         };
       })
-      .filter(item => (item.hybridRelevanceScore || 0) > 0.08 || (item.keywordScore || 0) > 0 || (item.cosineSimilarity || 0) > 0.12)
+      .filter(item => (
+        (item.hybridRelevanceScore || 0) > ragTuning.knowledge_min_score
+        || (item.keywordScore || 0) > 0
+        || (item.cosineSimilarity || 0) > ragTuning.knowledge_min_semantic_score
+      ))
       .sort((a, b) => (b.hybridRelevanceScore || 0) - (a.hybridRelevanceScore || 0));
     }
 
     return rawResults.slice(0, Number(limit) || 20);
   },
 
-  getKnowledgeDimensions({ visibility = 'public' } = {}) {
-    let sql = "SELECT dimensions, category FROM blog_posts WHERE content_type = 'knowledge' AND published = 1";
+  getKnowledgeDimensions({ visibility = 'public', publishedOnly = true } = {}) {
+    let sql = "SELECT dimensions, category FROM blog_posts WHERE content_type = 'knowledge'";
+    if (publishedOnly) sql += ' AND published = 1';
     if (visibility === 'public') {
       sql += " AND visibility = 'public'";
+    } else if (visibility === 'private') {
+      sql += " AND visibility = 'private'";
     }
     const posts = db.prepare(sql).all();
 
@@ -1126,12 +1301,12 @@ export const dbService = {
   // ==========================================
   // 8. UNIFIED RAG SEARCH ENGINE (Global Scope)
   // ==========================================
-  searchUnified({ query = '', scope = 'all', limit = 30, visibility = 'public' } = {}) {
+  searchUnified({ query = '', scope = 'all', limit = 30, visibility = 'public', publishedOnly = true, presentationProfile = null } = {}) {
     let blogResults = [];
     let knowledgeResults = [];
 
     if (scope === 'all' || scope === 'blog') {
-      blogResults = this.searchBlog({ query, visibility, limit }).map(r => ({
+      blogResults = this.searchBlog({ query, visibility, publishedOnly, presentationProfile, limit }).map(r => ({
         ...r,
         source: 'blog',
         badge: 'BLOG CIKK'
@@ -1139,7 +1314,7 @@ export const dbService = {
     }
 
     if (scope === 'all' || scope === 'knowledge') {
-      knowledgeResults = this.searchKnowledge({ query, visibility, limit, contentType: 'knowledge' }).map(r => ({
+      knowledgeResults = this.searchKnowledge({ query, visibility, publishedOnly, presentationProfile, limit, contentType: 'knowledge' }).map(r => ({
         ...r,
         source: 'knowledge',
         badge: 'TUDÁSTÁR'
@@ -1277,6 +1452,13 @@ export const dbService = {
           throw new Error('NO_PREVIOUS_STATE: Cannot rollback settings with null previous state');
         }
         return this.updateSettings(prev_state, `${actor}_REVERT_#${auditLogId}`);
+      }
+
+      case 'rag_settings': {
+        if (!prev_state) {
+          throw new Error('NO_PREVIOUS_STATE: Cannot rollback RAG settings with null previous state');
+        }
+        return this.updateRagSettings(prev_state, `${actor}_REVERT_#${auditLogId}`);
       }
 
       case 'projects': {
@@ -2037,6 +2219,7 @@ export const dbService = {
   // ==========================================
   getArticleRagChunks({ slug, query = '', visibility = 'public' }) {
     if (!slug) throw new Error('MISSING_PARAMETER: slug is required');
+    const ragTuning = this.getRagSettings();
 
     let sql = 'SELECT * FROM blog_posts WHERE slug = ?';
     if (visibility === 'public') {
@@ -2071,7 +2254,8 @@ export const dbService = {
       const trimmed = para.trim();
       if (!trimmed || trimmed.startsWith('```')) return;
 
-      if (trimmed.startsWith('#')) {
+      const isHeading = trimmed.startsWith('#');
+      if (isHeading) {
         currentHeading = trimmed.replace(/^#+\s*/, '');
       }
 
@@ -2079,7 +2263,12 @@ export const dbService = {
       const tokenCount = Math.max(8, Math.ceil(trimmed.split(/\s+/).length * 1.3));
 
       // 1. Vektoros Koszinusz Hasonlóság számítás (128-dim dense embedding)
-      const chunkVector = embeddingService.generateEmbedding(trimmed);
+      const chunkEmbeddingInput = ragTuning.chunk_include_heading_context
+        && !isHeading
+        && currentHeading !== 'Bevezetés'
+        ? `${currentHeading}\n${trimmed}`
+        : trimmed;
+      const chunkVector = embeddingService.generateEmbedding(chunkEmbeddingInput);
       const cosineSim = embeddingService.cosineSimilarity(chunkVector, queryVector);
 
       // 2. Kulcsszavas illeszkedés
@@ -2087,11 +2276,16 @@ export const dbService = {
       const keywordRatio = queryTokens.length > 0 ? (matchedTokens.length / queryTokens.length) : 0;
 
       // 3. Hibrid RAG Pontszám (0 - 100%)
-      const hybridScore = Math.min(100, Math.round(((cosineSim * 0.6) + (keywordRatio * 0.4)) * 100));
+      const hybridScore = Math.min(100, Math.round((
+        (cosineSim * ragTuning.chunk_semantic_weight)
+        + (keywordRatio * (1 - ragTuning.chunk_semantic_weight))
+      ) * 100));
 
       const isKeywordMatch = matchedTokens.length > 0;
-      const isSemanticMatch = cosineSim >= 0.18;
-      const isRagChunk = tokenCount >= 18 && (hybridScore >= 35 || isKeywordMatch || isSemanticMatch);
+      const isSemanticMatch = cosineSim >= ragTuning.chunk_semantic_threshold;
+      const isRagChunk = tokenCount >= ragTuning.chunk_min_tokens && (
+        hybridScore >= ragTuning.chunk_min_relevance || isKeywordMatch || isSemanticMatch
+      );
 
       const isMatch = isKeywordMatch || isSemanticMatch || isRagChunk;
 
@@ -2150,8 +2344,8 @@ export const dbService = {
     // Knowledge Graph (Kapcsolódó Tudástár háló koszinusz hasonlóság alapján)
     const otherPosts = db.prepare("SELECT id, slug, title, category, dimensions FROM blog_posts WHERE slug != ? AND published = 1 AND visibility = 'public' LIMIT 10").all(post.slug);
     const knowledgeGraph = otherPosts.map(op => {
-      const opVec = embeddingService.generateDocumentEmbedding(op);
-      const postVec = embeddingService.generateDocumentEmbedding(post);
+      const opVec = embeddingService.generateDocumentEmbedding(op, ragTuning);
+      const postVec = embeddingService.generateDocumentEmbedding(post, ragTuning);
       const graphSim = embeddingService.cosineSimilarity(opVec, postVec);
       return {
         id: op.id,

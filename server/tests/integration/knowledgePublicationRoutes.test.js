@@ -6,12 +6,21 @@ import { dbService } from '../../services/dbService.js';
 const slugs = {
   publishedPublic: 'publication-guard-published-public-doc',
   unpublishedPublic: 'publication-guard-unpublished-public-doc',
-  publishedPrivate: 'publication-guard-published-private-doc'
+  publishedPrivate: 'publication-guard-published-private-doc',
+  workspacePublic: 'publication-guard-workspace-public-doc',
+  workspaceOther: 'publication-guard-workspace-other-doc',
+  workspacePrivate: 'publication-guard-workspace-private-doc',
+  workspaceUnpublished: 'publication-guard-workspace-unpublished-doc'
 };
 
-function createKnowledgeDoc({ slug, visibility, published }) {
+const workspaceIds = {
+  target: 'prj_public_workspace_filter',
+  other: 'prj_other_workspace_filter'
+};
+
+function createKnowledgeDoc({ slug, visibility, published, projectId = 'prj_general' }) {
   return dbService.createBlogPost({
-    project_id: 'prj_general',
+    project_id: projectId,
     content_type: 'knowledge',
     slug,
     title: `Publication guard: ${slug}`,
@@ -39,6 +48,30 @@ describe('Public knowledge publication guard', () => {
       slug: slugs.publishedPrivate,
       visibility: 'private',
       published: 1
+    });
+    createKnowledgeDoc({
+      slug: slugs.workspacePublic,
+      visibility: 'public',
+      published: 1,
+      projectId: workspaceIds.target
+    });
+    createKnowledgeDoc({
+      slug: slugs.workspaceOther,
+      visibility: 'public',
+      published: 1,
+      projectId: workspaceIds.other
+    });
+    createKnowledgeDoc({
+      slug: slugs.workspacePrivate,
+      visibility: 'private',
+      published: 1,
+      projectId: workspaceIds.target
+    });
+    createKnowledgeDoc({
+      slug: slugs.workspaceUnpublished,
+      visibility: 'public',
+      published: 0,
+      projectId: workspaceIds.target
     });
   });
 
@@ -75,7 +108,7 @@ describe('Public knowledge publication guard', () => {
     expect(unpublishedResponse.status).toBe(404);
     expect(privateResponse.status).toBe(404);
 
-    for (const slug of Object.values(slugs)) {
+    for (const slug of [slugs.publishedPublic, slugs.unpublishedPublic, slugs.publishedPrivate]) {
       expect(getBlogPostBySlug).toHaveBeenCalledWith(slug, {
         publishedOnly: true,
         visibility: 'public'
@@ -94,5 +127,51 @@ describe('Public knowledge publication guard', () => {
     expect(matchedSlugs).toContain(slugs.publishedPublic);
     expect(matchedSlugs).not.toContain(slugs.unpublishedPublic);
     expect(matchedSlugs).not.toContain(slugs.publishedPrivate);
+  });
+
+  it('scopes both public list paths by project_id without relaxing publication visibility', async () => {
+    const requests = await Promise.all([
+      request(app).get('/api/docs').query({ project_id: workspaceIds.target }),
+      request(app).get('/api/knowledge/docs').query({ project_id: workspaceIds.target })
+    ]);
+
+    for (const response of requests) {
+      expect(response.status).toBe(200);
+      const listedSlugs = response.body.docs.map(document => document.slug);
+      expect(listedSlugs).toContain(slugs.workspacePublic);
+      expect(listedSlugs).not.toContain(slugs.workspaceOther);
+      expect(listedSlugs).not.toContain(slugs.workspacePrivate);
+      expect(listedSlugs).not.toContain(slugs.workspaceUnpublished);
+      expect(response.body.docs.every(document => document.project_id === workspaceIds.target)).toBe(true);
+    }
+  });
+
+  it('keeps the existing public search project_id boundary', async () => {
+    const response = await request(app)
+      .get('/api/docs/search')
+      .query({ q: 'Publication guard', project_id: workspaceIds.target });
+
+    expect(response.status).toBe(200);
+    const listedSlugs = response.body.docs.map(document => document.slug);
+    expect(listedSlugs).toContain(slugs.workspacePublic);
+    expect(listedSlugs).not.toContain(slugs.workspaceOther);
+    expect(listedSlugs).not.toContain(slugs.workspacePrivate);
+    expect(listedSlugs).not.toContain(slugs.workspaceUnpublished);
+  });
+
+  it('accepts project_id for the public knowledge search while retaining the camelCase alias', async () => {
+    const responses = await Promise.all([
+      request(app).get('/api/knowledge/search').query({ q: 'Publication guard', project_id: workspaceIds.target }),
+      request(app).get('/api/knowledge/search').query({ q: 'Publication guard', projectId: workspaceIds.target })
+    ]);
+
+    for (const response of responses) {
+      expect(response.status).toBe(200);
+      const listedSlugs = response.body.map(document => document.slug);
+      expect(listedSlugs).toContain(slugs.workspacePublic);
+      expect(listedSlugs).not.toContain(slugs.workspaceOther);
+      expect(listedSlugs).not.toContain(slugs.workspacePrivate);
+      expect(listedSlugs).not.toContain(slugs.workspaceUnpublished);
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BlogPostsTab from '../components/admin/tabs/BlogPostsTab.jsx';
@@ -25,9 +25,13 @@ function jsonResponse(body, { ok = true, status = 200 } = {}) {
   };
 }
 
-function createAdminFetch(authResponse) {
+function createAdminFetch(
+  authResponse,
+  vaultSyncResponse = jsonResponse({ report: { processed: 0, errors: [] } })
+) {
   return vi.fn(async (url) => {
     if (url === '/api/admin/drive/auth-url') return authResponse;
+    if (url === '/api/admin/vault/sync') return vaultSyncResponse;
     if (url === '/api/admin/blog') return jsonResponse([]);
     if (url === '/api/admin/messages') return jsonResponse([]);
     if (url === '/api/admin/audit') return jsonResponse([]);
@@ -60,13 +64,9 @@ afterEach(() => {
 function renderTab(overrides = {}) {
   const props = {
     blogsList: [],
-    editingBlog: null,
-    setEditingBlog: vi.fn(),
-    onSaveBlog: vi.fn(),
-    onDeleteBlog: vi.fn(),
     showMarkdownCheatSheet: false,
     setShowMarkdownCheatSheet: vi.fn(),
-    onDriveSync: vi.fn(),
+    onVaultSync: vi.fn(),
     onEmptyDriveRepair: vi.fn(),
     onDriveReconnect: vi.fn(),
     isSyncing: false,
@@ -84,19 +84,29 @@ function renderTab(overrides = {}) {
   return props;
 }
 
-describe('BlogPostsTab Drive reconciliation controls', () => {
-  it('keeps preview and pull-apply as explicit separate actions', () => {
+function renderDashboard() {
+  render(
+    <MemoryRouter>
+      <AdminDashboard />
+    </MemoryRouter>
+  );
+}
+
+describe('BlogPostsTab local-vault and cloud-recovery controls', () => {
+  it('keeps the Obsidian Vault preview and apply actions explicit and separate', () => {
     const props = renderTab();
 
-    fireEvent.click(screen.getByRole('button', { name: /drive előnézet/i }));
-    fireEvent.click(screen.getByRole('button', { name: /drive → db alkalmazás/i }));
+    expect(screen.getByRole('group', { name: /elsődleges obsidian vault szinkronizálás/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /vault előnézet/i }));
+    fireEvent.click(screen.getByRole('button', { name: /vault → sqlite\/rag alkalmazás/i }));
 
-    expect(props.onDriveSync).toHaveBeenNthCalledWith(1, true);
-    expect(props.onDriveSync).toHaveBeenNthCalledWith(2, false);
+    expect(props.onVaultSync).toHaveBeenNthCalledWith(1, true);
+    expect(props.onVaultSync).toHaveBeenNthCalledWith(2, false);
   });
 
-  it('exposes an accessible reconnect action and disables it during Drive work', () => {
+  it('keeps Drive reconnect in a distinct cloud-recovery group and disables it during sync work', () => {
     const props = renderTab();
+    expect(screen.getByRole('group', { name: /különálló felhő-helyreállító eszközök/i })).toBeInTheDocument();
     const reconnectButton = screen.getByRole('button', { name: /google drive újracsatlakoztatása/i });
 
     fireEvent.click(reconnectButton);
@@ -108,11 +118,11 @@ describe('BlogPostsTab Drive reconciliation controls', () => {
     expect(screen.getAllByRole('button', { name: /google drive újracsatlakoztatása/i })[1]).toBeDisabled();
   });
 
-  it('labels a dry-run report and exposes collisions and partial errors', () => {
+  it('labels an Obsidian Vault dry-run report and exposes conflicts without promising automatic renames', () => {
     renderTab({
       syncResult: {
         dry_run: true,
-        mode: 'GOOGLE_OAUTH_API',
+        mode: 'LOCAL_OBSIDIAN_VAULT',
         discovered: 3,
         processed: 2,
         created: 1,
@@ -124,10 +134,50 @@ describe('BlogPostsTab Drive reconciliation controls', () => {
       }
     });
 
-    expect(screen.getByText(/drive előnézet — nincs írás/i)).toBeInTheDocument();
-    expect(screen.getByText(/slug ütközések: 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/obsidian vault előnézet — nincs írás/i)).toBeInTheDocument();
+    expect(screen.getByText(/azonosító ütközések: 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/nincs automatikus átnevezés/i)).toBeInTheDocument();
     expect(screen.getByText(/knowledge: ONE_FILE_SKIPPED/i)).toBeInTheDocument();
     expect(screen.getByText('/article')).toBeInTheDocument();
+  });
+
+  it('shows the exact vault paths for a duplicate-slug refusal', () => {
+    renderTab({
+      syncResult: {
+        dry_run: true,
+        errors: [{
+          code: 'VAULT_DUPLICATE_SLUG',
+          slug: 'same-slug',
+          details: {
+            source_paths: ['KnowledgeBase/one.md', 'Blog/two.md']
+          }
+        }]
+      }
+    });
+
+    expect(screen.getByText(/obsidian vault: VAULT_DUPLICATE_SLUG \[\/same-slug\]/i)).toBeInTheDocument();
+    expect(screen.getByText(/KnowledgeBase\/one\.md ↔ Blog\/two\.md/i)).toBeInTheDocument();
+  });
+
+  it('keeps the CMS document list read-only and directs authoring to Obsidian', () => {
+    renderTab({
+      blogsList: [{
+        id: 'vault-doc',
+        title: 'Vault document',
+        slug: 'vault-document',
+        content_type: 'knowledge',
+        category: 'RAG',
+        created_at: '2026-08-20',
+        summary: 'Read-only projection',
+        published: 1
+      }]
+    });
+
+    expect(screen.getByText(/cms csak olvasható.*szerkesztés: obsidian vault/i)).toBeInTheDocument();
+    expect(screen.getByText(/^csak olvasható \/\/ obsidian$/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^\+ új_dokumentum$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /szerkesztés/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /törlés/i })).not.toBeInTheDocument();
   });
 
   it('keeps empty-cloud repair preview and apply as separate explicit actions', () => {
@@ -175,48 +225,34 @@ describe('BlogPostsTab Drive reconciliation controls', () => {
   });
 });
 
-describe('AdminDashboard Google Drive reconnect handler', () => {
-  async function openBlogTab() {
-    render(
-      <MemoryRouter>
-        <AdminDashboard />
-      </MemoryRouter>
-    );
+describe('AdminDashboard unified content-control contract', () => {
+  it('does not reintroduce the retired BLOG_LOGS authoring tab', () => {
+    renderDashboard();
 
-    fireEvent.click(screen.getByRole('button', { name: /blog_logs/i }));
-    return screen.findByRole('button', { name: /google drive újracsatlakoztatása/i });
-  }
-
-  it.each(['auth_url', 'authUrl'])('uses the %s response URL for same-window navigation', async (urlKey) => {
-    const targetHash = `#drive-auth-${urlKey}`;
-    dashboardContexts.auth.adminFetch = createAdminFetch(jsonResponse({ [urlKey]: targetHash }));
-    const reconnectButton = await openBlogTab();
-
-    fireEvent.click(reconnectButton);
-
-    await waitFor(() => expect(window.location.hash).toBe(targetHash));
-    expect(dashboardContexts.auth.adminFetch).toHaveBeenCalledWith('/api/admin/drive/auth-url');
+    expect(screen.queryByRole('button', { name: /blog_logs/i })).not.toBeInTheDocument();
   });
 
-  it('reports a failed authorization request without navigating', async () => {
-    window.location.hash = '#before-reconnect';
-    dashboardContexts.auth.adminFetch = createAdminFetch(
-      jsonResponse({ error: 'DRIVE_AUTH_DENIED' }, { ok: false, status: 403 })
-    );
-    const reconnectButton = await openBlogTab();
+  it('exposes taxonomy as the canonical classification and collection control', () => {
+    renderDashboard();
 
-    fireEvent.click(reconnectButton);
-
-    expect(await screen.findByText(/\[ERROR\].*DRIVE_AUTH_DENIED/i)).toBeInTheDocument();
-    expect(window.location.hash).toBe('#before-reconnect');
+    expect(screen.getByRole('button', { name: /taxonomy_matrix/i })).toBeInTheDocument();
   });
 
-  it('reports a successful response that omits both supported URL fields', async () => {
-    dashboardContexts.auth.adminFetch = createAdminFetch(jsonResponse({ success: true }));
-    const reconnectButton = await openBlogTab();
+  it('exposes central Vault templates for unified Markdown document creation', () => {
+    renderDashboard();
 
-    fireEvent.click(reconnectButton);
+    expect(screen.getByRole('button', { name: /vault_templates/i })).toBeInTheDocument();
+  });
 
-    expect(await screen.findByText(/\[ERROR\].*HIÁNYZÓ_GOOGLE_DRIVE_AUTH_URL/i)).toBeInTheDocument();
+  it('exposes graph control independently of a presentation profile', () => {
+    renderDashboard();
+
+    expect(screen.getByRole('button', { name: /graph_control/i })).toBeInTheDocument();
+  });
+
+  it('exposes the workflow studio alongside the unified graph controls', () => {
+    renderDashboard();
+
+    expect(screen.getByRole('button', { name: /workflow_studio/i })).toBeInTheDocument();
   });
 });

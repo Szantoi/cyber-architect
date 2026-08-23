@@ -65,10 +65,10 @@ describe('RagEvidenceModal accessibility', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Bizonyítékok megnyitása/i }));
     await screen.findByText(/Nincs közvetlen találat/i);
-    const blogFilter = screen.getByRole('button', { name: /BLOG ESETTANULMÁNYOK/i });
-    fireEvent.click(blogFilter);
+    const articleFilter = screen.getByRole('button', { name: /CIKKEK \/ ESETTANULMÁNYOK/i });
+    fireEvent.click(articleFilter);
 
-    expect(blogFilter).toHaveAttribute('aria-pressed', 'true');
+    expect(articleFilter).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /ÖSSZES TALÁLAT/i })).toHaveAttribute('aria-pressed', 'false');
   });
 });

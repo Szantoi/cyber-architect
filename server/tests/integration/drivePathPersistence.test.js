@@ -12,6 +12,11 @@ import { driveSyncService } from '../../services/driveSyncService.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const createdPostIds = [];
+// This regression launches two real Node processes to exercise a legacy SQLite
+// migration. Under the parallel integration suite, Windows process startup can
+// exceed Vitest's default five-second test budget even though no database is
+// shared with another worker.
+const EXTERNAL_DATABASE_INITIALIZATION_TEST_TIMEOUT_MS = 15_000;
 
 function uniqueSuffix() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -136,7 +141,7 @@ describe('Drive hierarchy persistence', () => {
     } finally {
       fs.rmSync(dataDir, { recursive: true, force: true });
     }
-  });
+  }, EXTERNAL_DATABASE_INITIALIZATION_TEST_TIMEOUT_MS);
 
   it('persists normalized Drive paths through create/update and exposes them through public docs and search', async () => {
     const suffix = uniqueSuffix();

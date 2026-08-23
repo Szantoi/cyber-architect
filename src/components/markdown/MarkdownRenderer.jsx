@@ -132,7 +132,7 @@ const CalloutBox = ({ type, children }) => {
   });
 
   return (
-    <div className={`my-6 border-l-4 ${config.border} ${config.bg} p-4 relative overflow-hidden`}>
+    <div className={`my-6 min-w-0 max-w-full border-l-4 ${config.border} ${config.bg} p-4 relative`}>
       {/* Dekoratív vonal */}
       <div className={`absolute inset-y-0 left-0 w-0.5 ${config.border.replace('border-', 'bg-')} opacity-30`} />
 
@@ -153,7 +153,7 @@ const CalloutBox = ({ type, children }) => {
 const DetailsAccordion = ({ summary, children }) => {
   const [open, setOpen] = useState(false);
   return (
-    <div className="my-4 border border-white/10 bg-slate-900/40 overflow-hidden">
+    <div className="my-4 min-w-0 max-w-full border border-white/10 bg-slate-900/40">
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-4 py-3 font-mono text-xs uppercase tracking-widest text-slate-300 hover:text-neonCyan hover:bg-neonCyan/5 transition-all duration-200 cursor-pointer"
@@ -175,26 +175,55 @@ const DetailsAccordion = ({ summary, children }) => {
 };
 
 // ── Image Lightbox ──
-const ImageLightbox = ({ src, alt }) => {
+// A Markdownba szúrt képeknek soha nem szabad a szülő konténer szélességén
+// túlrajzolniuk.  A méretezés magán az img elemen történik, így nem egy
+// overflow rejtés takarja el a hibát, hanem a kép arányosan zsugorodik.
+const ImageLightbox = ({ src, alt, linked = false }) => {
   const [open, setOpen] = useState(false);
+  const imageLabel = alt ? `Kép nagyítása: ${alt}` : 'Kép nagyítása';
+
+  const imageFrame = (
+    <div
+      data-testid="markdown-image-frame"
+      className="relative w-full min-w-0 max-w-full border border-white/10 transition-colors duration-300 hover:border-neonCyan/30"
+    >
+      <img
+        data-testid="markdown-image"
+        src={src}
+        alt={alt || ''}
+        className="block h-auto w-full min-w-0 max-w-full object-contain"
+        loading="lazy"
+      />
+      {!linked && (
+        <>
+          <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/30">
+            <ZoomIn className="text-white opacity-0 transition-opacity group-hover/img:opacity-80" size={28} />
+          </div>
+          <div className="pointer-events-none absolute top-0 left-0 h-4 w-4 border-t-2 border-l-2 border-neonCyan/40" />
+          <div className="pointer-events-none absolute right-0 bottom-0 h-4 w-4 border-r-2 border-b-2 border-neonMagenta/40" />
+        </>
+      )}
+    </div>
+  );
+
   return (
     <>
-      <figure className="my-6 group/img cursor-zoom-in" onClick={() => setOpen(true)}>
-        <div className="relative border border-white/10 overflow-hidden hover:border-neonCyan/30 transition-colors duration-300">
-          <img
-            src={src}
-            alt={alt || ''}
-            className="w-full object-cover block"
-            loading="lazy"
-          />
-          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-colors flex items-center justify-center">
-            <ZoomIn className="text-white opacity-0 group-hover/img:opacity-80 transition-opacity" size={28} />
-          </div>
-          <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-neonCyan/40 pointer-events-none" />
-          <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-neonMagenta/40 pointer-events-none" />
-        </div>
+      <figure className="markdown-image my-6 w-full min-w-0 max-w-full">
+        {linked ? (
+          imageFrame
+        ) : (
+          <button
+            type="button"
+            className="group/img block w-full min-w-0 max-w-full cursor-zoom-in text-left"
+            onClick={() => setOpen(true)}
+            aria-label={imageLabel}
+            aria-haspopup="dialog"
+          >
+            {imageFrame}
+          </button>
+        )}
         {alt && (
-          <figcaption className="mt-2 font-mono text-[10px] text-slate-500 uppercase tracking-wider text-center">
+          <figcaption className="mt-2 min-w-0 max-w-full break-words text-center font-mono text-[10px] uppercase tracking-wider text-slate-500">
             {alt}
           </figcaption>
         )}
@@ -203,18 +232,22 @@ const ImageLightbox = ({ src, alt }) => {
       {/* Lightbox Modal */}
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 cursor-zoom-out"
+          className="fixed inset-0 z-50 flex min-w-0 items-center justify-center bg-black/90 p-4 cursor-zoom-out"
           onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={alt ? `Nagyított kép: ${alt}` : 'Nagyított kép'}
         >
           <img
             src={src}
             alt={alt || ''}
-            className="max-w-full max-h-[90vh] object-contain"
+            className="h-auto max-h-[90vh] min-w-0 max-w-[calc(100vw-2rem)] object-contain"
             onClick={(e) => e.stopPropagation()}
           />
           <button
+            type="button"
             onClick={() => setOpen(false)}
-            className="absolute top-4 right-4 font-mono text-xs text-slate-400 hover:text-white border border-white/20 px-3 py-1 hover:border-white/50 transition-colors"
+            className="absolute top-4 right-4 border border-white/20 px-3 py-1 font-mono text-xs text-slate-400 transition-colors hover:border-white/50 hover:text-white"
           >
             BEZÁRÁS ✕
           </button>
@@ -222,6 +255,29 @@ const ImageLightbox = ({ src, alt }) => {
       )}
     </>
   );
+};
+
+const isImageLightbox = (child) => (
+  React.isValidElement(child) && child.type === ImageLightbox
+);
+
+const hasMarkdownImage = (children) => React.Children.toArray(children).some((child) => {
+  if (isImageLightbox(child)) return true;
+
+  // A [![alt](kép)](cél) forma esetén a kép egy LinkRenderer gyermekeként
+  // érkezik. Ez az eset is blokkszintű, reszponzív médiának számít.
+  return React.isValidElement(child)
+    && child.type === LinkRenderer
+    && React.Children.toArray(child.props?.children).some(isImageLightbox);
+});
+
+// ReactMarkdown a bekezdéshez az eredeti HAST node-ot is átadja. A képet
+// gyakran még nem a már renderelt ImageLightbox gyermekeként kapjuk meg, ezért
+// ezt is megvizsgáljuk; a linkbe ágyazott képet a children rekurzió kezeli.
+const hasImageNode = (node) => {
+  if (!node || typeof node !== 'object') return false;
+  if (node.tagName === 'img') return true;
+  return Array.isArray(node.children) && node.children.some(hasImageNode);
 };
 
 // ── Custom renderers regisztrálása ──
@@ -313,11 +369,19 @@ const BlockquoteRenderer = ({ children }) => {
 // ── Link renderer (Taktikai data-chip stílus, zavaró aláhúzás nélkül) ──
 const LinkRenderer = ({ href, children }) => {
   const isExternal = href?.startsWith('http');
+  const containsImage = React.Children.toArray(children).some(isImageLightbox);
+  const linkedChildren = containsImage
+    ? React.Children.map(children, (child) => (
+      isImageLightbox(child) ? React.cloneElement(child, { linked: true }) : child
+    ))
+    : children;
   const baseClasses = "inline-flex items-center gap-1 font-mono text-[0.9em] font-bold px-1.5 py-0.2 mx-0.5 rounded-none transition-all duration-150 no-underline align-baseline " +
     "dark:text-neonCyan text-cyan-900 dark:bg-neonCyan/10 bg-cyan-100/80 " +
     "border-b-2 dark:border-neonCyan/50 border-cyan-700 " +
     "hover:dark:bg-neonCyan hover:dark:text-black hover:bg-slate-900 hover:text-white hover:border-slate-950 " +
     "hover:shadow-[0_0_8px_rgba(0,251,251,0.4)] cursor-pointer";
+  const imageLinkClasses = "group block w-full min-w-0 max-w-full no-underline transition-colors duration-150 cursor-pointer " +
+    "focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-neonCyan";
 
   if (isExternal) {
     return (
@@ -325,20 +389,24 @@ const LinkRenderer = ({ href, children }) => {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className={baseClasses}
+        className={containsImage ? imageLinkClasses : baseClasses}
         title={`Külső hivatkozás megnyitása: ${href}`}
       >
-        <span>{children}</span>
-        <ExternalLink size={10} className="shrink-0 opacity-70 group-hover:opacity-100" />
+        {containsImage ? linkedChildren : (
+          <>
+            <span>{children}</span>
+            <ExternalLink size={10} className="shrink-0 opacity-70 group-hover:opacity-100" />
+          </>
+        )}
       </a>
     );
   }
   return (
     <Link
       to={href || '#'}
-      className={baseClasses}
+      className={containsImage ? imageLinkClasses : baseClasses}
     >
-      <span>{children}</span>
+      {containsImage ? linkedChildren : <span>{children}</span>}
     </Link>
   );
 };
@@ -367,11 +435,11 @@ const Ol = ({ children, start }) => (
 
 // ── List Item ──
 const Li = ({ children, _listType, _index, ...props }) => (
-  <li className="flex gap-2 items-start leading-relaxed" {...props}>
+  <li className="flex min-w-0 max-w-full items-start gap-2 leading-relaxed" {...props}>
     <span className={`shrink-0 mt-1 dark:text-neonCyan text-cyan-600 font-mono text-xs ${_listType === 'ol' ? '' : ''}`}>
       {_listType === 'ol' ? `${_index}.` : '▸'}
     </span>
-    <span>{children}</span>
+    <div className="min-w-0 max-w-full flex-1">{children}</div>
   </li>
 );
 
@@ -611,7 +679,8 @@ const MarkdownRenderer = ({
     h2: buildHeading(2),
     h3: buildHeading(3),
     h4: buildHeading(4),
-    p: ({ children }) => {
+    p: ({ children, node }) => {
+        const containsImage = hasMarkdownImage(children) || hasImageNode(node);
         const fullParagraphText = extractTextFromChildren(children);
         
         // 1. Szerver RAG Chunk prioritás
@@ -806,8 +875,9 @@ const MarkdownRenderer = ({
 
         if (shouldDecorate && chunkMeta) {
           const style = getChunkStyle(chunkMeta, activeFilterLevel);
+          const ParagraphContent = containsImage ? 'div' : 'p';
           return (
-            <div className={`rag-chunk-card my-5 p-4.5 border-2 ${style.border} ${style.bg} ${style.shadow} font-body relative transition-all duration-300`}>
+            <div className={`rag-chunk-card my-5 w-full min-w-0 max-w-full p-4.5 border-2 ${style.border} ${style.bg} ${style.shadow} font-body relative transition-all duration-300`}>
               <div className={`flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono font-black uppercase ${style.text} pb-2.5 mb-3 border-b-2 ${style.border.replace('border-2', '').replace('border-', 'border-').replace('/60', '/30').replace('/80', '/40')}`}>
                 <span className="flex items-center gap-1.5 tracking-wider">
                   <span className={`w-2 h-2 rounded-full ${style.iconBg} animate-pulse`} />
@@ -826,9 +896,9 @@ const MarkdownRenderer = ({
                 </div>
               </div>
 
-              <p className="dark:text-slate-100 text-slate-900 font-body text-base leading-relaxed font-medium mb-3">
+              <ParagraphContent className="min-w-0 max-w-full dark:text-slate-100 text-slate-900 font-body text-base leading-relaxed font-medium mb-3">
                 {highlightChildren(children)}
-              </p>
+              </ParagraphContent>
 
               {/* Deep RAG Metadata Readout Footer */}
               <div className={`pt-2.5 mt-2 border-t flex flex-wrap items-center justify-between gap-2 font-mono text-[9px] ${style.text.replace('text-', 'text-').replace('dark:text-', 'dark:text-').replace('800', '900')} ${style.border.replace('border-', 'border-').replace('/60', '/20').replace('/80', '/20')}`}>
@@ -848,8 +918,19 @@ const MarkdownRenderer = ({
           );
         }
 
+        if (containsImage) {
+          // A figure nem lehet egy bekezdés gyermeke. Így a sima Markdown
+          // kép, illetve a képre tett link is érvényes blokkszintű struktúrát
+          // kap, és a max-width a valódi rendelkezésre álló szélességhez köt.
+          return (
+            <div className="markdown-media-paragraph min-w-0 max-w-full">
+              {highlightChildren(children)}
+            </div>
+          );
+        }
+
         return (
-          <p className="dark:text-slate-300 text-slate-800 font-body text-base leading-relaxed mb-5 font-normal">
+          <p className="min-w-0 max-w-full dark:text-slate-300 text-slate-800 font-body text-base leading-relaxed mb-5 font-normal">
             {highlightChildren(children)}
           </p>
         );
@@ -858,7 +939,7 @@ const MarkdownRenderer = ({
       blockquote: BlockquoteRenderer,
       ul: Ul,
       ol: Ol,
-      li: ({ children, ...props }) => {
+      li: ({ children, _listType, _index, ...props }) => {
         const fullLiText = extractTextFromChildren(children);
         
         // Use serverChunk for list items as well if available
@@ -1053,8 +1134,8 @@ const MarkdownRenderer = ({
           const style = getChunkStyle(chunkMeta, activeFilterLevel);
 
           return (
-            <li className="mb-4 list-none" {...props}>
-              <div className={`rag-chunk-card p-3.5 border-2 ${style.border} ${style.bg} ${style.shadow} font-body relative transition-all duration-300`}>
+          <li className="mb-4 min-w-0 max-w-full list-none" {...props}>
+            <div className={`rag-chunk-card w-full min-w-0 max-w-full p-3.5 border-2 ${style.border} ${style.bg} ${style.shadow} font-body relative transition-all duration-300`}>
                 <div className={`flex flex-wrap items-center justify-between gap-1.5 text-[9px] font-mono font-black uppercase ${style.text} pb-1.5 mb-2 border-b ${style.border.replace('border-2', '').replace('border-', 'border-').replace('/60', '/30').replace('/80', '/40')}`}>
                   <span className="flex items-center gap-1 tracking-wider">
                     <span className={`w-1.5 h-1.5 rounded-full ${style.iconBg} animate-pulse`} />
@@ -1085,8 +1166,13 @@ const MarkdownRenderer = ({
         }
 
         return (
-          <li className="mb-2 leading-relaxed dark:text-slate-300 text-slate-800" {...props}>
-            {highlightChildren(children)}
+          <li className="mb-2 flex min-w-0 max-w-full items-start gap-2 leading-relaxed dark:text-slate-300 text-slate-800" {...props}>
+            <span className="mt-1 shrink-0 font-mono text-xs text-cyan-600 dark:text-neonCyan">
+              {_listType === 'ol' ? `${_index}.` : '▸'}
+            </span>
+            <div className="min-w-0 max-w-full flex-1">
+              {highlightChildren(children)}
+            </div>
           </li>
         );
       },
@@ -1131,7 +1217,7 @@ const MarkdownRenderer = ({
     };
 
   return (
-    <div className="max-w-none font-body">
+    <div className="markdown-content w-full min-w-0 max-w-full font-body">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkFrontmatter]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA], rehypeSlug]}

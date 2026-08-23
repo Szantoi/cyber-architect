@@ -112,6 +112,33 @@ describe('backupDatabase', () => {
     expect(readMarkers(result.path)).toEqual(['persistent-current']);
   });
 
+  it('uses the portable workspace database before SQLITE_DATA_DIR and stores its backup beside it', () => {
+    const directory = makeTemporaryDirectory();
+    const workspaceDataDirectory = path.join(directory, 'vault', '.cyberarchitect');
+    const workspacePath = path.join(workspaceDataDirectory, 'portfolio.sqlite');
+    const legacyDataDirectory = path.join(directory, 'legacy-data');
+    const legacyPath = path.join(legacyDataDirectory, 'portfolio.sqlite');
+    createMarkerDatabase(workspacePath, 'workspace');
+    createMarkerDatabase(legacyPath, 'legacy');
+
+    const result = backupDatabase(null, {
+      env: {
+        CYBER_ARCHITECT_WORKSPACE_DATA_DIR: workspaceDataDirectory,
+        SQLITE_DATA_DIR: legacyDataDirectory
+      },
+      appRoot: directory
+    });
+
+    expect(resolveDatabasePath({
+      CYBER_ARCHITECT_WORKSPACE_DATA_DIR: workspaceDataDirectory,
+      SQLITE_DATA_DIR: legacyDataDirectory
+    }, directory)).toBe(workspacePath);
+    expect(result.sourcePath).toBe(workspacePath);
+    expect(path.dirname(result.path)).toBe(path.join(workspaceDataDirectory, 'backups'));
+    expect(readMarkers(result.path)).toEqual(['workspace']);
+    expect(readMarkers(legacyPath)).toEqual(['legacy']);
+  });
+
   it('lets an explicit database path win over data and legacy candidates', () => {
     const directory = makeTemporaryDirectory();
     const explicitPath = path.join(directory, 'explicit', 'chosen.sqlite');

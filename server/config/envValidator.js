@@ -1,5 +1,9 @@
 import { logger } from '../logger.js';
 import { getProductionSecurityErrors } from '../config.js';
+import {
+  DATABASE_PATH_SOURCE,
+  resolveDatabaseLocation
+} from './databasePath.js';
 
 /**
  * Validates critical environment variables upon server startup.
@@ -21,8 +25,14 @@ export function validateEnv() {
   }
 
   // 3. Database path verification
-  if (!process.env.SQLITE_DB_PATH) {
-    warnings.push('SQLITE_DB_PATH is not set; defaulting to data/portfolio.sqlite.');
+  const databaseLocation = resolveDatabaseLocation(process.env);
+  if (databaseLocation.source === DATABASE_PATH_SOURCE.LEGACY_DEFAULT) {
+    warnings.push('No SQLite workspace path is configured; defaulting to data/portfolio.sqlite.');
+  } else if (
+    databaseLocation.source === DATABASE_PATH_SOURCE.WORKSPACE_DATA_DIRECTORY
+    && String(process.env.SQLITE_DATA_DIR || '').trim()
+  ) {
+    warnings.push('CYBER_ARCHITECT_WORKSPACE_DATA_DIR overrides SQLITE_DATA_DIR for this process.');
   }
 
   // 4. Port verification

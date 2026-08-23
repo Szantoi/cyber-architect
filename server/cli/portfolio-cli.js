@@ -78,9 +78,7 @@ ${ANSI.bold}ELÉRHETŐ PARANCSOK:${ANSI.reset}
   ${ANSI.green}skills add --name "..."${ANSI.reset}            Új készség hozzáadása
   ${ANSI.green}skills delete <id>${ANSI.reset}                  Készség törlése
   ${ANSI.green}blogs${ANSI.reset} / ${ANSI.green}blog list${ANSI.reset}                   Cikkek listázása
-  ${ANSI.green}blog publish --file <útvonal>${ANSI.reset}       Cikk publikálása Markdown fájlból
-  ${ANSI.green}blog publish --title "..."${ANSI.reset}          Cikk közzététele
-  ${ANSI.green}blog delete <id>${ANSI.reset}                      Cikk törlése
+  ${ANSI.green}blog publish/delete${ANSI.reset}                 Letiltva: a Content/ Vault-csomagot szerkeszd
   ${ANSI.green}messages${ANSI.reset}                            Beérkező Uplink kapcsolatfelvételek
   ${ANSI.green}mark-read <id>${ANSI.reset}                     Üzenet olvasottnak jelölése
   ${ANSI.green}backup${ANSI.reset}                               SQLite adatbázis azonnali mentése
@@ -374,53 +372,26 @@ async function main() {
         }
       } else if (parsed.subcommand === 'publish') {
         checkAuth(parsed.flags);
-        let title = parsed.flags.title;
-        let summary = parsed.flags.summary;
-        let content = parsed.flags.content;
-        const category = parsed.flags.category || 'ADATBIZTONSÁG';
-        const read_time = parsed.flags.read_time || '4 PERC';
-
-        if (parsed.flags.file) {
-          const filePath = path.resolve(process.cwd(), parsed.flags.file);
-          if (!fs.existsSync(filePath)) {
-            console.error(`${ANSI.red}Hiba: A fájl nem található: ${filePath}${ANSI.reset}`);
-            process.exit(1);
-          }
-          content = fs.readFileSync(filePath, 'utf-8');
-          if (!title) {
-            const firstHeading = content.match(/^#\s+(.+)$/m);
-            title = firstHeading ? firstHeading[1] : path.basename(filePath, path.extname(filePath));
-          }
-          if (!summary) {
-            const firstPara = content.split('\n\n').find(p => p.trim() && !p.startsWith('#'));
-            summary = firstPara ? firstPara.slice(0, 160) + '...' : 'Rendszernapló és esettanulmány.';
-          }
-        }
-
-        if (!title || !content) {
-          console.error(`${ANSI.red}Hiba: Cím (--title) és tartalom (--content vagy --file) szükséges!${ANSI.reset}`);
-          process.exit(1);
-        }
-
-        const post = dbService.createBlogPost({ title, summary: summary || title, content, category, read_time, published: 1 }, 'CLI_OPERATOR');
         if (isJson) {
-          console.log(JSON.stringify(post, null, 2));
+          console.log(JSON.stringify({
+            error: 'LOCAL_VAULT_AUTHORITATIVE',
+            message: 'Cikket a Content/ Vault-csomag index.md fájljában hozz létre vagy módosíts, majd futtasd a Vault szinkront.'
+          }, null, 2));
         } else {
-          console.log(`${ANSI.green}✔ Cikk publikálva:${ANSI.reset} "${post.title}" (/${post.slug})\n`);
+          console.error(`${ANSI.yellow}A CLI-s cikkpublikálás le van tiltva. A Content/ Vault-csomag index.md fájlját szerkeszd, majd futtasd a Vault szinkront.${ANSI.reset}`);
         }
+        process.exitCode = 1;
       } else if (parsed.subcommand === 'delete') {
         checkAuth(parsed.flags);
-        const id = parsed.positionals[0] || parsed.flags.id;
-        if (!id) {
-          console.error(`${ANSI.red}Hiba: Add meg a törlendő cikk ID-t!${ANSI.reset}`);
-          process.exit(1);
-        }
-        dbService.deleteBlogPost(id, 'CLI_OPERATOR');
         if (isJson) {
-          console.log(JSON.stringify({ success: true, deletedId: id }));
+          console.log(JSON.stringify({
+            error: 'LOCAL_VAULT_AUTHORITATIVE',
+            message: 'A dokumentumkezelés a Content/ Vault-csomagban történik; törléshez vagy archiváláshoz kezeld a Markdown-csomagot kontrollált karbantartással.'
+          }, null, 2));
         } else {
-          console.log(`${ANSI.green}✔ Cikk törölve:${ANSI.reset} [#${id}]\n`);
+          console.error(`${ANSI.yellow}A CLI-s cikktörlés le van tiltva. A dokumentumkezelés a Content/ Vault-csomagban történik.${ANSI.reset}`);
         }
+        process.exitCode = 1;
       }
       break;
     }

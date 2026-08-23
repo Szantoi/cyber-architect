@@ -6,6 +6,7 @@ import { afterAll } from 'vitest';
 const previousNodeEnv = process.env.NODE_ENV;
 const previousDbPath = process.env.SQLITE_DB_PATH;
 const previousDataDir = process.env.SQLITE_DATA_DIR;
+const previousWorkspaceDataDir = process.env.CYBER_ARCHITECT_WORKSPACE_DATA_DIR;
 
 // A fresh directory per test file keeps parallel workers independent and makes
 // it impossible for a Vitest import to fall back to data/portfolio.sqlite.
@@ -15,6 +16,7 @@ const testDbPath = path.join(testDataDir, 'portfolio.test.sqlite');
 process.env.NODE_ENV = 'test';
 process.env.SQLITE_DATA_DIR = testDataDir;
 process.env.SQLITE_DB_PATH = testDbPath;
+delete process.env.CYBER_ARCHITECT_WORKSPACE_DATA_DIR;
 
 afterAll(async () => {
   try {
@@ -35,6 +37,7 @@ afterAll(async () => {
     restoreEnvironmentVariable('NODE_ENV', previousNodeEnv);
     restoreEnvironmentVariable('SQLITE_DB_PATH', previousDbPath);
     restoreEnvironmentVariable('SQLITE_DATA_DIR', previousDataDir);
+    restoreEnvironmentVariable('CYBER_ARCHITECT_WORKSPACE_DATA_DIR', previousWorkspaceDataDir);
   }
 });
 

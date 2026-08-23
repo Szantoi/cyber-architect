@@ -36,7 +36,7 @@ export default defineConfig([
         'warn',
         {
           allowConstantExport: true,
-          allowExportNames: ['useAuth', 'useContent', 'useTheme'],
+          allowExportNames: ['useAuth', 'useContent', 'useTheme', 'useAdminPreview', 'useCadCui', 'useCadCuiCommand', 'defineCadCuiSystem', 'sanitizeCadCuiState', 'loadCadCuiState', 'saveCadCuiState', 'selectCadCuiCommands', 'GRAPH_CUI_SYSTEM', 'RIBBON_TABS', 'RIBBON_ACCENT_MODES', 'CAD_CONTENT_DENSITIES', 'CAD_CONTENT_DETAILS', 'DEFAULT_RIBBON_PREFERENCES', 'DEFAULT_CAD_CONTENT_PREFERENCES', 'RIBBON_TOOL_OPTIONS'],
         },
       ],
       'react-hooks/set-state-in-effect': 'off',

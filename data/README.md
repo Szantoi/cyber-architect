@@ -1,6 +1,10 @@
 # 💾 Cyber-Architect Database Storage (`/data`)
 
-This directory is reserved for all local SQLite database instances, WAL journals, and snapshot backups.
+This directory is the legacy default for local SQLite database instances, WAL
+journals, and snapshot backups. A portable Vault can instead use its own
+`<Vault>/.cyberarchitect/` directory through
+`CYBER_ARCHITECT_WORKSPACE_DATA_DIR`; see
+[Workspace storage](../docs/WORKSPACE_STORAGE.md).
 
 ---
 
@@ -8,7 +12,8 @@ This directory is reserved for all local SQLite database instances, WAL journals
 * **Zero Commit Rule:** All `.sqlite`, `.db`, `-wal`, and `-shm` database files in this folder are **strictly ignored by `.gitignore`** and will NEVER be committed or pushed to public repositories.
 * **Auto-Initialization:** The server automatically provisions and migrates the database schema on first startup if no database file is present.
 * **Point-in-Time Backups:** Snapshots created via `node server/scripts/backupDatabase.js` use SQLite's native `VACUUM INTO` command for zero-downtime backups.
-* **Local Markdown mirror:** Container deployments resolve `CYBER_ARCHITECT_CONTENT_ROOT` to `/app/data/content` by default in Compose. This directory is writable and persistent because `/app/data` is a named volume. Bind-mount an existing `CyberArchitect` directory there when the container must repair or export canonical Markdown files.
+* **DB-first document assets:** Container deployments keep the canonical SQLite data and default `content-assets/` root under persistent `/app/data`. `CYBER_ARCHITECT_CONTENT_ROOT` is only an optional, read-only legacy Obsidian import/archive path; it is never the active content source of truth.
+* **No live file sync:** Do not place live `portfolio.sqlite`, `-wal` or `-shm` files into a multi-device cloud sync. Use verified snapshot backups instead.
 
 ---
 

@@ -44,22 +44,26 @@ const AdminLogin = ({ onLogin }) => {
 
         <form onSubmit={handleSubmit} className="space-y-6 font-mono text-xs">
           <div>
-            <label className="block dark:text-slate-400 text-slate-900 uppercase tracking-wider mb-2 font-bold">
+            <label htmlFor="admin-pin" className="block dark:text-slate-400 text-slate-900 uppercase tracking-wider mb-2 font-bold">
               BIZTONSÁGI_PIN:~$
             </label>
             <input
+              id="admin-pin"
+              name="pin"
               type="password"
               required
               autoFocus
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value)}
               placeholder="••••"
+              aria-invalid={Boolean(authError)}
+              aria-describedby={authError ? 'admin-login-error' : undefined}
               className="w-full bg-[var(--surface-panel)] border-2 dark:border-white/20 border-slate-900 p-3 text-center text-2xl tracking-[0.5em] text-neonCyan font-bold outline-none focus:border-neonCyan transition-colors shadow-inner"
             />
           </div>
 
           {authError && (
-            <div className="p-3 bg-neonMagenta/10 border-2 border-neonMagenta text-neonMagenta text-[11px] font-bold animate-pulse">
+            <div id="admin-login-error" role="alert" className="p-3 bg-neonMagenta/10 border-2 border-neonMagenta text-neonMagenta text-[11px] font-bold animate-pulse">
               [HIBA] {authError}
             </div>
           )}

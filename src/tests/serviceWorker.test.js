@@ -71,8 +71,9 @@ describe('production service worker cache isolation', () => {
     });
     await activation;
 
-    expect(harness.caches.delete).toHaveBeenCalledTimes(1);
+    expect(harness.caches.delete).toHaveBeenCalledTimes(2);
     expect(harness.caches.delete).toHaveBeenCalledWith('cyber-architect-v2');
+    expect(harness.caches.delete).toHaveBeenCalledWith('cyber-architect-v3');
     expect(harness.caches.delete).not.toHaveBeenCalledWith('another-application-v1');
     expect(harness.self.clients.claim).toHaveBeenCalledOnce();
   });

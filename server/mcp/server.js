@@ -4,6 +4,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { dbService } from '../services/dbService.js';
+import {
+  contentTypeFromPresentationProfile,
+  normalizePresentationProfile,
+  resolveDocumentPresentation
+} from '../services/presentationProfile.js';
 
 // Create MCP Server Instance
 const server = new McpServer({
@@ -108,6 +113,46 @@ function verifyOperationAuth(providedKey, toolName = 'UNKNOWN_TOOL') {
   };
 }
 
+function localVaultAuthoritativeToolError() {
+  return {
+    isError: true,
+    content: [{
+      type: 'text',
+      text: 'LOCAL_VAULT_AUTHORITATIVE: Content mutation is disabled in MCP. Edit the canonical Content/<collection>/<slug>/index.md package through Obsidian or the authenticated Vault editor, then refresh its SQLite/RAG projection.'
+    }]
+  };
+}
+
+// The MCP name stays stable for existing agents, while the search itself is
+// document-model first: `content_type` is a legacy portal projection and
+// `presentation_profile` is the optional reader-view filter.
+function resolveMcpDocumentFilter({ contentType = 'all', presentationProfile = null } = {}) {
+  const normalizedContentType = String(contentType ?? 'all').trim().toLowerCase() || 'all';
+  if (!['knowledge', 'blog', 'all'].includes(normalizedContentType)) {
+    const error = new Error('INVALID_CONTENT_TYPE');
+    error.code = 'INVALID_CONTENT_TYPE';
+    throw error;
+  }
+
+  const rawProfile = String(presentationProfile ?? '').trim().toLowerCase();
+  if (!rawProfile || rawProfile === 'all') {
+    return { contentType: normalizedContentType, presentationProfile: null };
+  }
+
+  const canonicalProfile = normalizePresentationProfile(rawProfile);
+  const projectedContentType = contentTypeFromPresentationProfile(canonicalProfile);
+  if (normalizedContentType !== 'all' && normalizedContentType !== projectedContentType) {
+    const error = new Error('PRESENTATION_PROFILE_CONTENT_TYPE_CONFLICT');
+    error.code = 'PRESENTATION_PROFILE_CONTENT_TYPE_CONFLICT';
+    throw error;
+  }
+
+  return {
+    contentType: projectedContentType,
+    presentationProfile: canonicalProfile
+  };
+}
+
 // =========================================================================
 // 1. SITE SETTINGS TOOLS & RESOURCES
 // =========================================================================
@@ -120,7 +165,7 @@ server.tool(
   },
   async ({ key }) => {
     try {
-      const allSettings = dbService.getSettings();
+      const allSettings = dbService.getPublicSettings();
       if (key) {
         return {
           content: [
@@ -491,7 +536,7 @@ server.tool(
 
 server.tool(
   'publish_blog_post',
-  'Publish a new technical blog post / case study in full Markdown format.',
+  'Disabled: author Markdown content in the canonical server-side Obsidian vault instead.',
   {
     title: z.string().describe('Title of the article'),
     summary: z.string().describe('Short 1-2 sentence preview summary'),
@@ -509,25 +554,13 @@ server.tool(
       return { isError: true, content: [{ type: 'text', text: auth.error }] };
     }
 
-    try {
-      const post = dbService.createBlogPost(args, 'MCP_AGENT');
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ success: true, message: 'ARTICLE_TRANSMITTED', post }, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return { isError: true, content: [{ type: 'text', text: `ERROR: ${err.message}` }] };
-    }
+    return localVaultAuthoritativeToolError();
   }
 );
 
 server.tool(
   'update_blog_post',
-  'Update an existing blog post / system log by numeric ID.',
+  'Disabled: edit the matching Markdown file in the canonical server-side Obsidian vault instead.',
   {
     id: z.number().describe('Numeric ID of the post to update'),
     title: z.string().describe('Updated article title'),
@@ -546,44 +579,25 @@ server.tool(
       return { isError: true, content: [{ type: 'text', text: auth.error }] };
     }
 
-    try {
-      const updated = dbService.updateBlogPost(args.id, args, 'MCP_AGENT');
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ success: true, message: 'ARTICLE_UPDATED', post: updated }, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return { isError: true, content: [{ type: 'text', text: `ERROR: ${err.message}` }] };
-    }
+    return localVaultAuthoritativeToolError();
   }
 );
 
 server.tool(
   'delete_blog_post',
-  'Delete a blog post permanently by ID.',
+  'Disabled: archive or remove the Markdown file in the canonical server-side Obsidian vault instead.',
   {
     id: z.number().describe('Numeric ID of the article to delete'),
     auth_key: z.string().optional().describe('Admin authorization PIN or API key')
   },
-  async ({ id, auth_key }) => {
+  async ({ auth_key }) => {
     checkToolRateLimit('delete_blog_post');
     const auth = verifyOperationAuth(auth_key, 'delete_blog_post');
     if (!auth.authorized) {
       return { isError: true, content: [{ type: 'text', text: auth.error }] };
     }
 
-    try {
-      const result = dbService.deleteBlogPost(id, 'MCP_AGENT');
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
-      };
-    } catch (err) {
-      return { isError: true, content: [{ type: 'text', text: `ERROR: ${err.message}` }] };
-    }
+    return localVaultAuthoritativeToolError();
   }
 );
 
@@ -593,27 +607,51 @@ server.tool(
 
 server.tool(
   'search_knowledge',
-  'Search the entire platform (Knowledge Base and Blog) using hybrid FTS5 full-text and 128-dimensional vector cosine similarity.',
+  'Search every canonical document profile using hybrid FTS5 full-text and 128-dimensional vector cosine similarity. `content_type` remains a legacy alias; use `presentation_profile` only when a reader-view filter is needed.',
   {
     query: z.string().describe('Search query, technical concept, or question'),
-    content_type: z.enum(['knowledge', 'blog', 'all']).optional().default('knowledge').describe('Filter by content type'),
+    content_type: z.enum(['knowledge', 'blog', 'all']).optional().default('all').describe('Legacy portal projection filter; default searches all documents'),
+    presentation_profile: z.enum(['knowledge', 'article', 'blog', 'all']).optional().describe('Optional display-profile filter; `blog` is an alias for `article`'),
     project_id: z.string().optional().describe('Optional filter by knowledge project ID (e.g. prj_spaceos, prj_nexus)'),
     category: z.string().optional().describe('Optional category filter'),
     limit: z.number().optional().default(10).describe('Max results to return')
   },
-  async ({ query, content_type, project_id, category, limit }) => {
+  async ({ query, content_type, presentation_profile, project_id, category, limit }) => {
     checkToolRateLimit('search_knowledge');
     try {
-      const results = dbService.searchPosts(query, {
-        contentType: content_type || 'knowledge',
+      const filter = resolveMcpDocumentFilter({
+        contentType: content_type,
+        presentationProfile: presentation_profile
+      });
+      const requestedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
+      // `searchKnowledge` is the shared document retrieval engine. It is
+      // deliberately used with `all` by default rather than performing two
+      // independent Blog/Knowledge queries that can drift in score and scope.
+      const candidates = dbService.searchKnowledge({
+        query,
+        contentType: filter.contentType,
+        presentationProfile: filter.presentationProfile,
         projectId: project_id,
-        category,
-        limit: limit || 10,
+        limit: category ? Math.min(requestedLimit * 10, 250) : requestedLimit,
         publishedOnly: true,
         visibility: 'public'
       });
+      const normalizedCategory = String(category ?? '').trim();
+      const results = normalizedCategory
+        ? candidates.filter(document => document.category === normalizedCategory).slice(0, requestedLimit)
+        : candidates;
       return {
-        content: [{ type: 'text', text: JSON.stringify({ count: results.length, query, results }, null, 2) }]
+        content: [{ type: 'text', text: JSON.stringify({
+          count: results.length,
+          query,
+          filters: {
+            content_type: filter.contentType,
+            presentation_profile: filter.presentationProfile || 'all',
+            project_id: project_id || null,
+            category: normalizedCategory || null
+          },
+          results
+        }, null, 2) }]
       };
     } catch (err) {
       return { isError: true, content: [{ type: 'text', text: `ERROR: ${err.message}` }] };
@@ -623,15 +661,24 @@ server.tool(
 
 server.tool(
   'get_knowledge_article',
-  'Retrieve full Markdown content, frontmatter dimensions, and metadata of a knowledge base article by slug.',
+  'Retrieve full Markdown content, frontmatter dimensions, and metadata of one canonical document by slug. The legacy tool name remains for agent compatibility.',
   {
-    slug: z.string().describe('The URL slug of the knowledge article')
+    slug: z.string().describe('The URL slug of the canonical document'),
+    presentation_profile: z.enum(['knowledge', 'article', 'blog', 'all']).optional().describe('Optional display-profile filter; `blog` is an alias for `article`')
   },
-  async ({ slug }) => {
+  async ({ slug, presentation_profile }) => {
     checkToolRateLimit('get_knowledge_article');
     try {
       const article = dbService.getBlogPostBySlug(slug, { publishedOnly: true, visibility: 'public' });
-      if (!article) {
+      const filter = resolveMcpDocumentFilter({ presentationProfile: presentation_profile });
+      const actualPresentation = article
+        ? resolveDocumentPresentation({
+          presentationProfile: article.presentation_profile,
+          contentType: article.content_type,
+          fallbackProfile: 'article'
+        })
+        : null;
+      if (!article || (filter.presentationProfile && actualPresentation.presentation_profile !== filter.presentationProfile)) {
         return { isError: true, content: [{ type: 'text', text: `ARTICLE_NOT_FOUND: ${slug}` }] };
       }
       return {
@@ -645,7 +692,7 @@ server.tool(
 
 server.tool(
   'publish_knowledge_article',
-  'Upload and index a new technical knowledge article with frontmatter dimensions, category and full Markdown body.',
+  'Disabled: author the knowledge Markdown and Obsidian frontmatter in the canonical server-side vault instead.',
   {
     title: z.string().describe('Title of the knowledge article'),
     summary: z.string().describe('Short 1-2 sentence preview summary'),
@@ -670,29 +717,13 @@ server.tool(
       return { isError: true, content: [{ type: 'text', text: auth.error }] };
     }
 
-    try {
-      const article = dbService.createBlogPost({
-        ...args,
-        content_type: 'knowledge'
-      }, 'MCP_AGENT');
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ success: true, message: 'KNOWLEDGE_ARTICLE_PUBLISHED', article }, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return { isError: true, content: [{ type: 'text', text: `ERROR: ${err.message}` }] };
-    }
+    return localVaultAuthoritativeToolError();
   }
 );
 
 server.tool(
   'update_knowledge_article',
-  'Edit and re-index an existing knowledge base article by ID.',
+  'Disabled: edit and re-index the matching Markdown file in the canonical server-side vault instead.',
   {
     id: z.number().describe('Numeric ID of the article to update'),
     title: z.string().optional().describe('Updated title'),
@@ -716,48 +747,25 @@ server.tool(
       return { isError: true, content: [{ type: 'text', text: auth.error }] };
     }
 
-    try {
-      const updated = dbService.updateBlogPost(args.id, {
-        ...args,
-        content_type: 'knowledge'
-      }, 'MCP_AGENT');
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ success: true, message: 'KNOWLEDGE_ARTICLE_UPDATED', article: updated }, null, 2)
-          }
-        ]
-      };
-    } catch (err) {
-      return { isError: true, content: [{ type: 'text', text: `ERROR: ${err.message}` }] };
-    }
+    return localVaultAuthoritativeToolError();
   }
 );
 
 server.tool(
   'delete_knowledge_article',
-  'Delete a knowledge base article permanently by numeric ID (Requires Auth).',
+  'Disabled: archive or remove the Markdown file in the canonical server-side vault instead.',
   {
     id: z.number().describe('Numeric ID of the knowledge article to delete'),
     auth_key: z.string().optional().describe('Admin authorization PIN or API key')
   },
-  async ({ id, auth_key }) => {
+  async ({ auth_key }) => {
     checkToolRateLimit('delete_knowledge_article');
     const auth = verifyOperationAuth(auth_key, 'delete_knowledge_article');
     if (!auth.authorized) {
       return { isError: true, content: [{ type: 'text', text: auth.error }] };
     }
 
-    try {
-      const result = dbService.deleteBlogPost(id, 'MCP_AGENT');
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
-      };
-    } catch (err) {
-      return { isError: true, content: [{ type: 'text', text: `ERROR: ${err.message}` }] };
-    }
+    return localVaultAuthoritativeToolError();
   }
 );
 
@@ -968,7 +976,7 @@ server.resource(
     contents: [
       {
         uri: uri.href,
-        text: JSON.stringify(dbService.getSettings(), null, 2),
+        text: JSON.stringify(dbService.getPublicSettings(), null, 2),
         mimeType: 'application/json'
       }
     ]

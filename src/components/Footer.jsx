@@ -14,6 +14,7 @@ const Footer = () => {
         <a className="font-mono text-[10px] uppercase tracking-widest dark:text-slate-400 text-slate-800 font-bold dark:hover:text-neonCyan hover:text-cyan-800 hover:tracking-[0.2em] transition-all duration-300" href="/#grid">PROJEKTEK</a>
         <a className="font-mono text-[10px] uppercase tracking-widest dark:text-slate-400 text-slate-800 font-bold dark:hover:text-neonCyan hover:text-cyan-800 hover:tracking-[0.2em] transition-all duration-300" href="/blog">BLOG</a>
         <a className="font-mono text-[10px] uppercase tracking-widest dark:text-slate-400 text-slate-800 font-bold dark:hover:text-plasmaGreen hover:text-emerald-800 hover:tracking-[0.2em] transition-all duration-300" href="/knowledge">TUDÁSTÁR</a>
+        <a className="font-mono text-[10px] uppercase tracking-widest dark:text-slate-400 text-slate-800 font-bold dark:hover:text-neonMagenta hover:text-fuchsia-800 hover:tracking-[0.2em] transition-all duration-300" href="/graph">TUDÁSGRÁF</a>
         <a className="font-mono text-[10px] uppercase tracking-widest dark:text-slate-400 text-slate-800 font-bold dark:hover:text-neonCyan hover:text-cyan-800 hover:tracking-[0.2em] transition-all duration-300" href="/mcp">MCP UPLINK</a>
         <a className="font-mono text-[10px] uppercase tracking-[0.3em] dark:text-neonMagenta text-fuchsia-900 font-bold underline underline-offset-8 decoration-current/30 hover:decoration-current hover:tracking-[0.4em] transition-all duration-300" href="/#uplink">KAPCSOLAT</a>
       </div>

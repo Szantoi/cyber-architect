@@ -112,15 +112,29 @@ const embeddingService = {
   /**
    * Build Full Document Semantic Representation
    */
-  generateDocumentEmbedding(doc) {
+  generateDocumentEmbedding(doc, tuning = {}) {
     const title = doc.title || '';
     const summary = doc.summary || '';
     const category = doc.category || '';
-    const content = (doc.content || '').slice(0, 3000); // Index first 3000 chars of body
+    const resolvePositiveInteger = (value, fallback) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric) : fallback;
+    };
+    const titleWeight = resolvePositiveInteger(tuning.embedding_title_weight, 2);
+    const summaryWeight = resolvePositiveInteger(tuning.embedding_summary_weight, 2);
+    const contentCharLimit = resolvePositiveInteger(tuning.embedding_content_char_limit, 3000);
+    const content = (doc.content || '').slice(0, contentCharLimit);
     const dims = typeof doc.dimensions === 'string' ? doc.dimensions : JSON.stringify(doc.dimensions || {});
+    const repeatForWeight = (text, weight) => Array.from({ length: weight }, () => text).join(' ');
 
-    // Weighted composite text: Title and Summary are amplified
-    const compositeText = `${title} ${title} ${summary} ${summary} ${category} ${dims} ${content}`;
+    // Weighted composite text: title and summary multipliers are configurable.
+    const compositeText = [
+      repeatForWeight(title, titleWeight),
+      repeatForWeight(summary, summaryWeight),
+      category,
+      dims,
+      content
+    ].join(' ');
     return this.generateEmbedding(compositeText);
   }
 };

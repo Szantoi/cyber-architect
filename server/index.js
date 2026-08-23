@@ -27,6 +27,7 @@ import { syncRouter } from './routes/sync.routes.js';
 import { healthRouter } from './routes/health.routes.js';
 import { sseRouter } from './routes/sse.routes.js';
 import { mcpRouter } from './routes/mcp.routes.js';
+import { hybridRagRouter } from './routes/hybridRag.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,7 +70,18 @@ app.use(cors({
     return callback(new Error('CORS_ORIGIN_BLOCKED: Cross-Origin Request Blocked by Security Policy'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Correlation-ID'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Admin-Token',
+    'X-CA-Preview',
+    'X-Request-ID',
+    'X-Correlation-ID',
+    'X-Content-Asset-Path',
+    'X-Content-Asset-Mime-Type',
+    'X-Content-Asset-Kind',
+    'X-Content-Asset-Visibility'
+  ],
   credentials: true
 }));
 
@@ -105,6 +117,7 @@ app.use('/api', syncRouter);
 app.use('/api', healthRouter);
 app.use('/api', sseRouter);
 app.use('/api/mcp', mcpRouter);
+app.use('/api', hybridRagRouter);
 
 // Catch Unhandled API Routes (404)
 app.use('/api', notFoundHandler);
@@ -148,7 +161,13 @@ try {
 const isDirectExecution = Boolean(process.argv[1])
   && path.resolve(process.argv[1]) === __filename;
 
-if (process.env.NODE_ENV !== 'test' && isDirectExecution) {
+// PM2 starts the application through its ProcessContainerFork wrapper, so
+// process.argv[1] points at PM2 rather than this module. Treat a PM2-managed
+// process as an executable entry point while preserving import-safe behavior
+// for integration tests and operational scripts.
+const isPm2ManagedExecution = typeof process.env.pm_id === 'string';
+
+if (process.env.NODE_ENV !== 'test' && (isDirectExecution || isPm2ManagedExecution)) {
   dbMaintenance.startPeriodicMaintenance();
   const server = app.listen(PORT, () => {
     logger.success(`[CYBER_CORE_SERVER] Backend API running on port ${PORT} [${config.nodeEnv.toUpperCase()}]`);

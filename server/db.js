@@ -1,35 +1,82 @@
 import Database from 'better-sqlite3';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { hashPin } from './security/auth.js';
 import { config } from './config.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Standardized Database directory (data/)
-const dataDir = process.env.SQLITE_DATA_DIR || path.join(__dirname, '../data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
-const defaultDbPath = path.join(dataDir, 'portfolio.sqlite');
+import {
+  ensureDatabaseParentDirectory,
+  resolveDatabaseLocation
+} from './config/databasePath.js';
 
 // Tests must opt in to an isolated database. Failing closed here prevents a
 // missing or misordered test setup from ever opening the developer database.
-if (process.env.NODE_ENV === 'test' && !process.env.SQLITE_DB_PATH) {
+if (process.env.NODE_ENV === 'test' && !String(process.env.SQLITE_DB_PATH || '').trim()) {
   throw new Error('[DB_SAFETY] SQLITE_DB_PATH must point to an isolated database while NODE_ENV=test.');
 }
 
-export const dbPath = process.env.SQLITE_DB_PATH || defaultDbPath;
+const databaseLocation = resolveDatabaseLocation();
+ensureDatabaseParentDirectory(databaseLocation.path);
+
+export const dbPath = databaseLocation.path;
 export const db = new Database(dbPath);
 
 // Enable WAL mode for high concurrent performance
 db.pragma('journal_mode = WAL');
+// Foreign-key enforcement is connection-local in SQLite. The taxonomy
+// registry relies on it to prevent an admin action from orphaning assignments
+// or smart-collection references.
+db.pragma('foreign_keys = ON');
 
 const BLOG_POSTS_FTS_MIGRATION = 'blog_posts_fts';
 const BLOG_POSTS_FTS_VERSION = 1;
+const TAXONOMY_REGISTRY_MIGRATION = 'taxonomy_registry';
+const TAXONOMY_REGISTRY_VERSION = 1;
+const DEFAULT_SMART_COLLECTIONS_MIGRATION = 'default_smart_collections';
+const DEFAULT_SMART_COLLECTIONS_VERSION = 1;
+const GRAPH_REGISTRY_MIGRATION = 'directed_multilayer_graph_registry';
+const GRAPH_REGISTRY_VERSION = 1;
+const WORKFLOW_REGISTRY_MIGRATION = 'native_workflow_registry';
+const WORKFLOW_REGISTRY_VERSION = 1;
+const DEFAULT_SMART_COLLECTIONS = Object.freeze([
+  {
+    id: 'featured',
+    slug: 'featured',
+    name: 'KIEMELT',
+    description: 'Publikált, kiemelt tartalmak.',
+    iconKey: 'flame',
+    color: '#00FBFB',
+    rule: { type: 'content', field: 'published', operator: 'equals', value: true },
+    sortOrder: 10
+  },
+  {
+    id: 'audio',
+    slug: 'audio',
+    name: 'AUDIO',
+    description: 'Hanganyaggal rendelkező tartalmak.',
+    iconKey: 'headphones',
+    color: '#FF00FF',
+    rule: { type: 'content', field: 'has_audio', operator: 'equals', value: true },
+    sortOrder: 20
+  },
+  {
+    id: 'video',
+    slug: 'video',
+    name: 'VIDEÓ',
+    description: 'Videóval rendelkező tartalmak.',
+    iconKey: 'video',
+    color: '#38BDF8',
+    rule: { type: 'content', field: 'has_video', operator: 'equals', value: true },
+    sortOrder: 30
+  },
+  {
+    id: 'specs',
+    slug: 'specs',
+    name: 'SPEC',
+    description: 'Műszaki specifikációk és tudástári dokumentumok.',
+    iconKey: 'code-2',
+    color: '#80FF00',
+    rule: { type: 'content', field: 'content_type', operator: 'equals', value: 'knowledge' },
+    sortOrder: 40
+  }
+]);
 const BLOG_POSTS_FTS_COLUMNS = [
   'title',
   'summary',
@@ -170,6 +217,677 @@ function ensureBlogPostsFtsSchema() {
   }
 }
 
+/**
+ * The taxonomy registry is deliberately independent from the Markdown content
+ * projection.  Administrators own the vocabulary, display rules and smart
+ * collection definitions here; the canonical vault remains the only writer of
+ * a document's actual frontmatter/content.
+ */
+function ensureTaxonomyRegistrySchema() {
+  const appliedMigration = db.prepare(`
+    SELECT version
+    FROM schema_migrations
+    WHERE component = ?
+  `).get(TAXONOMY_REGISTRY_MIGRATION);
+  const appliedDefaultSmartCollectionsMigration = db.prepare(`
+    SELECT version
+    FROM schema_migrations
+    WHERE component = ?
+  `).get(DEFAULT_SMART_COLLECTIONS_MIGRATION);
+
+  if (appliedMigration?.version > TAXONOMY_REGISTRY_VERSION) {
+    throw new Error(
+      `[DB_MIGRATION] Unsupported ${TAXONOMY_REGISTRY_MIGRATION} schema version: ${appliedMigration.version}`
+    );
+  }
+  if (appliedDefaultSmartCollectionsMigration?.version > DEFAULT_SMART_COLLECTIONS_VERSION) {
+    throw new Error(
+      `[DB_MIGRATION] Unsupported ${DEFAULT_SMART_COLLECTIONS_MIGRATION} schema version: ${appliedDefaultSmartCollectionsMigration.version}`
+    );
+  }
+
+  const needsDefaultSmartCollections = Number(appliedDefaultSmartCollectionsMigration?.version || 0)
+    < DEFAULT_SMART_COLLECTIONS_VERSION;
+
+  const migrate = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS taxonomy_dimensions (
+        id TEXT PRIMARY KEY,
+        frontmatter_key TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        icon_key TEXT NOT NULL DEFAULT 'tag',
+        color TEXT NOT NULL DEFAULT '#00FFFF',
+        multi_select INTEGER NOT NULL DEFAULT 1 CHECK (multi_select IN (0, 1)),
+        filterable INTEGER NOT NULL DEFAULT 1 CHECK (filterable IN (0, 1)),
+        groupable INTEGER NOT NULL DEFAULT 1 CHECK (groupable IN (0, 1)),
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private')),
+        is_core INTEGER NOT NULL DEFAULT 0 CHECK (is_core IN (0, 1)),
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_taxonomy_dimensions_active_sort
+        ON taxonomy_dimensions(active, visibility, sort_order, label);
+
+      CREATE TABLE IF NOT EXISTS taxonomy_terms (
+        id TEXT PRIMARY KEY,
+        dimension_id TEXT NOT NULL REFERENCES taxonomy_dimensions(id) ON DELETE RESTRICT,
+        slug TEXT NOT NULL,
+        label TEXT NOT NULL,
+        normalized_label TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        icon_key TEXT,
+        color TEXT,
+        parent_id TEXT REFERENCES taxonomy_terms(id) ON DELETE RESTRICT,
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private')),
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(dimension_id, slug)
+      );
+      CREATE INDEX IF NOT EXISTS idx_taxonomy_terms_dimension_active_sort
+        ON taxonomy_terms(dimension_id, active, visibility, sort_order, label);
+      CREATE INDEX IF NOT EXISTS idx_taxonomy_terms_normalized_label
+        ON taxonomy_terms(dimension_id, normalized_label);
+      CREATE INDEX IF NOT EXISTS idx_taxonomy_terms_parent ON taxonomy_terms(parent_id);
+
+      CREATE TABLE IF NOT EXISTS taxonomy_term_aliases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dimension_id TEXT NOT NULL REFERENCES taxonomy_dimensions(id) ON DELETE RESTRICT,
+        term_id TEXT NOT NULL REFERENCES taxonomy_terms(id) ON DELETE CASCADE,
+        alias TEXT NOT NULL,
+        normalized_alias TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(dimension_id, normalized_alias),
+        UNIQUE(term_id, normalized_alias)
+      );
+      CREATE INDEX IF NOT EXISTS idx_taxonomy_aliases_term ON taxonomy_term_aliases(term_id);
+
+      CREATE TABLE IF NOT EXISTS taxonomy_term_relations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_term_id TEXT NOT NULL REFERENCES taxonomy_terms(id) ON DELETE RESTRICT,
+        target_term_id TEXT NOT NULL REFERENCES taxonomy_terms(id) ON DELETE RESTRICT,
+        relation_type TEXT NOT NULL,
+        weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0 AND weight <= 1),
+        bidirectional INTEGER NOT NULL DEFAULT 0 CHECK (bidirectional IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(source_term_id, target_term_id, relation_type)
+      );
+      CREATE INDEX IF NOT EXISTS idx_taxonomy_relations_source ON taxonomy_term_relations(source_term_id);
+      CREATE INDEX IF NOT EXISTS idx_taxonomy_relations_target ON taxonomy_term_relations(target_term_id);
+
+      -- This table is a materialized, query-friendly projection. The future
+      -- vault importer owns writes through taxonomyService; no admin content
+      -- mutation endpoint is exposed for it.
+      CREATE TABLE IF NOT EXISTS content_taxonomy_assignments (
+        post_id INTEGER NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
+        term_id TEXT NOT NULL REFERENCES taxonomy_terms(id) ON DELETE RESTRICT,
+        source TEXT NOT NULL DEFAULT 'vault_frontmatter',
+        ordinal INTEGER NOT NULL DEFAULT 0,
+        assigned_at TEXT NOT NULL,
+        PRIMARY KEY(post_id, term_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_content_taxonomy_assignments_term_post
+        ON content_taxonomy_assignments(term_id, post_id);
+      CREATE INDEX IF NOT EXISTS idx_content_taxonomy_assignments_post_source
+        ON content_taxonomy_assignments(post_id, source, ordinal);
+
+      CREATE TABLE IF NOT EXISTS smart_collections (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        icon_key TEXT NOT NULL DEFAULT 'sparkles',
+        color TEXT NOT NULL DEFAULT '#80FF00',
+        scope TEXT NOT NULL DEFAULT 'public' CHECK (scope IN ('public', 'private', 'personal')),
+        owner_id TEXT NOT NULL DEFAULT '',
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        rule_version INTEGER NOT NULL DEFAULT 1 CHECK (rule_version > 0),
+        rule_json TEXT NOT NULL,
+        group_by_json TEXT NOT NULL DEFAULT '{"type":"none"}',
+        sort_by TEXT NOT NULL DEFAULT 'recommended',
+        layout_json TEXT NOT NULL DEFAULT '{"view":"cards"}',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_smart_collections_scope_active_sort
+        ON smart_collections(scope, active, sort_order, name);
+
+      CREATE TABLE IF NOT EXISTS smart_collection_membership_overrides (
+        collection_id TEXT NOT NULL REFERENCES smart_collections(id) ON DELETE CASCADE,
+        post_id INTEGER NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
+        mode TEXT NOT NULL CHECK (mode IN ('include', 'exclude')),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(collection_id, post_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_smart_collection_overrides_post
+        ON smart_collection_membership_overrides(post_id);
+    `);
+
+    const now = new Date().toISOString();
+    const seedDimension = db.prepare(`
+      INSERT INTO taxonomy_dimensions
+        (id, frontmatter_key, label, description, icon_key, color, multi_select,
+         filterable, groupable, active, visibility, is_core, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'public', ?, ?, ?, ?)
+      ON CONFLICT(id) DO NOTHING
+    `);
+    seedDimension.run('industry', 'tax_industry', 'Iparág', 'Üzleti vagy iparági kontextus.', 'factory', '#00FFFF', 1, 1, 1, 1, 1, 10, now, now);
+    seedDimension.run('technology', 'tax_technology', 'Technológia', 'Technológiai eszköz, platform vagy módszer.', 'zap', '#00FFFF', 1, 1, 1, 1, 1, 20, now, now);
+    seedDimension.run('audience_role', 'tax_audience_role', 'Célcsoport / szerepkör', 'Célközönség vagy szakmai szerepkör.', 'target', '#FF00FF', 1, 1, 1, 1, 1, 30, now, now);
+    seedDimension.run('pain_point', 'tax_pain_point', 'Fájdalompont', 'A dokumentált üzleti vagy műszaki probléma típusa.', 'filter', '#FFB000', 1, 0, 0, 0, 0, 40, now, now);
+
+    if (needsDefaultSmartCollections) {
+      const seedSmartCollection = db.prepare(`
+        INSERT INTO smart_collections (
+          id, slug, name, description, icon_key, color, scope, owner_id, active,
+          rule_version, rule_json, group_by_json, sort_by, layout_json, sort_order, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'public', '', 1, 1, ?, '{"type":"none"}', 'recommended', '{"view":"cards"}', ?, ?, ?)
+        ON CONFLICT DO NOTHING
+      `);
+      for (const collection of DEFAULT_SMART_COLLECTIONS) {
+        seedSmartCollection.run(
+          collection.id,
+          collection.slug,
+          collection.name,
+          collection.description,
+          collection.iconKey,
+          collection.color,
+          JSON.stringify(collection.rule),
+          collection.sortOrder,
+          now,
+          now
+        );
+      }
+    }
+
+    db.prepare(`
+      INSERT INTO schema_migrations (component, version, applied_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(component) DO UPDATE SET
+        version = excluded.version,
+        applied_at = excluded.applied_at
+      WHERE schema_migrations.version < excluded.version
+    `).run(TAXONOMY_REGISTRY_MIGRATION, TAXONOMY_REGISTRY_VERSION, now);
+    if (needsDefaultSmartCollections) {
+      db.prepare(`
+        INSERT INTO schema_migrations (component, version, applied_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(component) DO UPDATE SET
+          version = excluded.version,
+          applied_at = excluded.applied_at
+        WHERE schema_migrations.version < excluded.version
+      `).run(DEFAULT_SMART_COLLECTIONS_MIGRATION, DEFAULT_SMART_COLLECTIONS_VERSION, now);
+    }
+  });
+
+  try {
+    migrate();
+  } catch (error) {
+    throw new Error(
+      `[DB_MIGRATION] Failed to migrate ${TAXONOMY_REGISTRY_MIGRATION} to version ${TAXONOMY_REGISTRY_VERSION}`,
+      { cause: error }
+    );
+  }
+}
+
+/**
+ * Database-owned directed multilayer multigraph.
+ *
+ * Markdown can project a small, human-readable view of a relation, but it is
+ * never the authority for graph identity, edge provenance or traversal
+ * semantics.  Every relationship is stored as a directed arc.  A semantic
+ * two-way relationship is represented by two arcs sharing a relation group.
+ */
+function ensureGraphRegistrySchema() {
+  const appliedMigration = db.prepare(`
+    SELECT version
+    FROM schema_migrations
+    WHERE component = ?
+  `).get(GRAPH_REGISTRY_MIGRATION);
+
+  if (appliedMigration?.version > GRAPH_REGISTRY_VERSION) {
+    throw new Error(
+      `[DB_MIGRATION] Unsupported ${GRAPH_REGISTRY_MIGRATION} schema version: ${appliedMigration.version}`
+    );
+  }
+
+  const migrate = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS graph_definitions (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        icon_key TEXT NOT NULL DEFAULT 'network',
+        color TEXT NOT NULL DEFAULT '#00FFFF',
+        visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('public', 'private')),
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        owner_id TEXT NOT NULL DEFAULT '',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_definitions_visibility_active_sort
+        ON graph_definitions(visibility, active, name);
+
+      CREATE TABLE IF NOT EXISTS graph_nodes (
+        id TEXT PRIMARY KEY,
+        node_type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        source_system TEXT NOT NULL DEFAULT 'manual',
+        source_reference TEXT NOT NULL DEFAULT '',
+        visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('public', 'private')),
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_graph_nodes_source_reference_unique
+        ON graph_nodes(source_system, source_reference)
+        WHERE source_reference <> '';
+      CREATE INDEX IF NOT EXISTS idx_graph_nodes_type_visibility_active
+        ON graph_nodes(node_type, visibility, active, label);
+
+      CREATE TABLE IF NOT EXISTS graph_edge_types (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        icon_key TEXT NOT NULL DEFAULT 'git-branch',
+        color TEXT NOT NULL DEFAULT '#80FF00',
+        source_node_types_json TEXT NOT NULL DEFAULT '[]',
+        target_node_types_json TEXT NOT NULL DEFAULT '[]',
+        inverse_edge_type_id TEXT REFERENCES graph_edge_types(id) ON DELETE RESTRICT,
+        allow_self_loop INTEGER NOT NULL DEFAULT 0 CHECK (allow_self_loop IN (0, 1)),
+        default_weight REAL NOT NULL DEFAULT 1 CHECK (default_weight >= 0 AND default_weight <= 1),
+        default_confidence REAL NOT NULL DEFAULT 1 CHECK (default_confidence >= 0 AND default_confidence <= 1),
+        default_cost REAL NOT NULL DEFAULT 1 CHECK (default_cost >= 0),
+        visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('public', 'private')),
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_edge_types_visibility_active
+        ON graph_edge_types(visibility, active, label);
+      CREATE INDEX IF NOT EXISTS idx_graph_edge_types_inverse
+        ON graph_edge_types(inverse_edge_type_id);
+
+      -- A multigraph deliberately has no uniqueness constraint over
+      -- (source, target, type): parallel arcs may carry independent evidence,
+      -- validity windows, confidence or provenance.
+      CREATE TABLE IF NOT EXISTS graph_edges (
+        id TEXT PRIMARY KEY,
+        source_node_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE RESTRICT,
+        target_node_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE RESTRICT,
+        edge_type_id TEXT NOT NULL REFERENCES graph_edge_types(id) ON DELETE RESTRICT,
+        relation_group_id TEXT NOT NULL DEFAULT '',
+        reciprocal_edge_id TEXT REFERENCES graph_edges(id) ON DELETE SET NULL,
+        reciprocal_role TEXT NOT NULL DEFAULT 'asserted'
+          CHECK (reciprocal_role IN ('asserted', 'reciprocal', 'derived_inverse')),
+        origin TEXT NOT NULL DEFAULT 'admin'
+          CHECK (origin IN ('admin', 'markdown_projection', 'sql_sync', 'wikilink_import', 'agent')),
+        projection_source_key TEXT NOT NULL DEFAULT '',
+        provenance_json TEXT NOT NULL DEFAULT '{}',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0 AND weight <= 1),
+        confidence REAL NOT NULL DEFAULT 1 CHECK (confidence >= 0 AND confidence <= 1),
+        cost REAL NOT NULL DEFAULT 1 CHECK (cost >= 0),
+        valid_from TEXT,
+        valid_to TEXT,
+        visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('public', 'private')),
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_edges_source_active
+        ON graph_edges(source_node_id, edge_type_id, active);
+      CREATE INDEX IF NOT EXISTS idx_graph_edges_target_active
+        ON graph_edges(target_node_id, edge_type_id, active);
+      CREATE INDEX IF NOT EXISTS idx_graph_edges_relation_group
+        ON graph_edges(relation_group_id);
+      CREATE INDEX IF NOT EXISTS idx_graph_edges_projection_source
+        ON graph_edges(origin, projection_source_key);
+      CREATE INDEX IF NOT EXISTS idx_graph_edges_reciprocal
+        ON graph_edges(reciprocal_edge_id);
+
+      CREATE TABLE IF NOT EXISTS graph_node_memberships (
+        graph_id TEXT NOT NULL REFERENCES graph_definitions(id) ON DELETE CASCADE,
+        node_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(graph_id, node_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_node_memberships_node
+        ON graph_node_memberships(node_id, graph_id);
+
+      -- An edge can appear in several graph layers.  Service-level validation
+      -- guarantees that both endpoints are members of every such layer.
+      CREATE TABLE IF NOT EXISTS graph_edge_memberships (
+        graph_id TEXT NOT NULL REFERENCES graph_definitions(id) ON DELETE CASCADE,
+        edge_id TEXT NOT NULL REFERENCES graph_edges(id) ON DELETE CASCADE,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(graph_id, edge_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_graph_edge_memberships_edge
+        ON graph_edge_memberships(edge_id, graph_id);
+    `);
+
+    const now = new Date().toISOString();
+    // Minimal shared edge vocabulary. These are normal registry records (an
+    // admin can label/style/deactivate them) but make the supplied project,
+    // epic, task and decision templates usable before a team invents its own
+    // domain-specific edge types.
+    const seedEdgeType = db.prepare(`
+      INSERT INTO graph_edge_types (
+        id, slug, label, description, icon_key, color, source_node_types_json, target_node_types_json,
+        inverse_edge_type_id, allow_self_loop, default_weight, default_confidence, default_cost,
+        visibility, active, metadata_json, created_by, created_at, updated_by, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 1, 1, 1, 'private', 1, ?, 'CA_SYSTEM', ?, 'CA_SYSTEM', ?)
+      ON CONFLICT(id) DO NOTHING
+    `);
+    const coreEdgeTypes = [
+      ['contains', 'contains', 'Tartalmaz', 'Strukturális projekt vagy epic → elem kapcsolat.', 'folder-tree', '#00FBFB', ['project', 'epic'], ['project', 'document', 'epic', 'task']],
+      ['part_of', 'part-of', 'Része ennek', 'Strukturális elem → projekt vagy epic kapcsolat.', 'git-branch', '#00FBFB', ['document', 'epic', 'task'], ['project', 'epic']],
+      ['depends_on', 'depends-on', 'Függ ettől', 'A forrás csak a cél után vagy a cél feltételeivel teljesíthető.', 'arrow-right', '#80FF00', [], []],
+      ['blocks', 'blocks', 'Blokkolja', 'A forrás akadályozza vagy blokkolja a cél előrehaladását.', 'octagon-alert', '#FF00FF', [], []],
+      ['related_to', 'related-to', 'Kapcsolódik hozzá', 'Szemantikus, opcionálisan párosított kapcsolat.', 'link', '#A855F7', [], []],
+      ['affects', 'affects', 'Hatással van rá', 'Hatás-, kockázat- vagy következménykapcsolat.', 'workflow', '#F59E0B', [], []],
+      ['supports', 'supports', 'Támogatja', 'Bizonyíték, eszköz vagy dokumentum által nyújtott támogatás.', 'circle-check', '#80FF00', [], []],
+      ['decides', 'decides', 'Dönt róla', 'Döntési rekord → érintett elem kapcsolat.', 'scale', '#A855F7', [], []]
+    ];
+    for (const [id, slug, label, description, iconKey, color, sourceTypes, targetTypes] of coreEdgeTypes) {
+      seedEdgeType.run(
+        id, slug, label, description, iconKey, color,
+        JSON.stringify(sourceTypes), JSON.stringify(targetTypes),
+        JSON.stringify({ system_seed: true }), now, now
+      );
+    }
+    // Upgrade only the framework-provided type; a separately administered
+    // `contains` type is never rewritten by startup migration.
+    const containsTargetTypes = JSON.stringify(['project', 'document', 'epic', 'task']);
+    db.prepare(`
+      UPDATE graph_edge_types
+      SET target_node_types_json = ?, updated_by = 'CA_SYSTEM', updated_at = ?
+      WHERE id = 'contains' AND created_by = 'CA_SYSTEM' AND target_node_types_json <> ?
+    `).run(containsTargetTypes, now, containsTargetTypes);
+    db.prepare(`
+      INSERT INTO schema_migrations (component, version, applied_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(component) DO UPDATE SET
+        version = excluded.version,
+        applied_at = excluded.applied_at
+      WHERE schema_migrations.version < excluded.version
+    `).run(GRAPH_REGISTRY_MIGRATION, GRAPH_REGISTRY_VERSION, now);
+  });
+
+  try {
+    migrate();
+  } catch (error) {
+    throw new Error(
+      `[DB_MIGRATION] Failed to migrate ${GRAPH_REGISTRY_MIGRATION} to version ${GRAPH_REGISTRY_VERSION}`,
+      { cause: error }
+    );
+  }
+}
+
+/**
+ * Native Workflow v1 registry.
+ *
+ * A workflow attaches to an existing graph definition for ownership and
+ * visualization, but generic graph edges are intentionally not executable.
+ * Version rows own their own typed steps and transitions; runtime instances
+ * reference an immutable published version and keep their event history
+ * append-only.  This separation prevents an ordinary graph edit from changing
+ * a running business process.
+ */
+function ensureWorkflowRegistrySchema() {
+  const appliedMigration = db.prepare(`
+    SELECT version
+    FROM schema_migrations
+    WHERE component = ?
+  `).get(WORKFLOW_REGISTRY_MIGRATION);
+
+  if (appliedMigration?.version > WORKFLOW_REGISTRY_VERSION) {
+    throw new Error(
+      `[DB_MIGRATION] Unsupported ${WORKFLOW_REGISTRY_MIGRATION} schema version: ${appliedMigration.version}`
+    );
+  }
+
+  const migrate = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS workflow_definitions (
+        id TEXT PRIMARY KEY,
+        graph_id TEXT NOT NULL REFERENCES graph_definitions(id) ON DELETE RESTRICT,
+        slug TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        latest_version INTEGER NOT NULL DEFAULT 0 CHECK (latest_version >= 0),
+        published_version INTEGER CHECK (published_version IS NULL OR published_version > 0),
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_workflow_definitions_graph_active
+        ON workflow_definitions(graph_id, active, name);
+
+      CREATE TABLE IF NOT EXISTS workflow_versions (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL REFERENCES workflow_definitions(id) ON DELETE RESTRICT,
+        version_number INTEGER NOT NULL CHECK (version_number > 0),
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'published', 'superseded')),
+        label TEXT NOT NULL DEFAULT '',
+        max_total_steps INTEGER NOT NULL DEFAULT 1000
+          CHECK (max_total_steps >= 1 AND max_total_steps <= 100000),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        published_by TEXT,
+        published_at TEXT,
+        UNIQUE(workflow_id, version_number)
+      );
+      -- A workflow has at most one executable revision. Older revisions stay
+      -- as immutable history and are marked superseded rather than rewritten.
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_versions_one_published
+        ON workflow_versions(workflow_id)
+        WHERE status = 'published';
+      CREATE INDEX IF NOT EXISTS idx_workflow_versions_workflow_status
+        ON workflow_versions(workflow_id, status, version_number DESC);
+
+      CREATE TABLE IF NOT EXISTS workflow_steps (
+        id TEXT PRIMARY KEY,
+        workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE,
+        step_key TEXT NOT NULL,
+        step_type TEXT NOT NULL CHECK (step_type IN ('start', 'task', 'decision', 'wait', 'end')),
+        label TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(workflow_version_id, step_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_workflow_steps_version_sort
+        ON workflow_steps(workflow_version_id, sort_order, step_key);
+
+      CREATE TABLE IF NOT EXISTS workflow_transitions (
+        id TEXT PRIMARY KEY,
+        workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE CASCADE,
+        source_step_id TEXT NOT NULL REFERENCES workflow_steps(id) ON DELETE CASCADE,
+        target_step_id TEXT NOT NULL REFERENCES workflow_steps(id) ON DELETE CASCADE,
+        label TEXT NOT NULL DEFAULT '',
+        guard_json TEXT,
+        allowed_actor_types_json TEXT NOT NULL DEFAULT '["human"]',
+        max_iterations INTEGER CHECK (max_iterations IS NULL OR (max_iterations >= 1 AND max_iterations <= 1000)),
+        evidence_required INTEGER NOT NULL DEFAULT 0 CHECK (evidence_required IN (0, 1)),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_workflow_transitions_source
+        ON workflow_transitions(workflow_version_id, source_step_id, sort_order, id);
+      CREATE INDEX IF NOT EXISTS idx_workflow_transitions_target
+        ON workflow_transitions(workflow_version_id, target_step_id, id);
+
+      -- SQLite cannot express these cross-column version memberships with a
+      -- single ordinary FK. The triggers make it impossible for a raw/manual
+      -- write to bind a transition to steps from another immutable revision.
+      CREATE TRIGGER IF NOT EXISTS workflow_transitions_version_guard_insert
+      BEFORE INSERT ON workflow_transitions
+      BEGIN
+        SELECT CASE WHEN NOT EXISTS (
+          SELECT 1 FROM workflow_steps
+          WHERE id = NEW.source_step_id AND workflow_version_id = NEW.workflow_version_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_TRANSITION_SOURCE_VERSION_MISMATCH') END;
+        SELECT CASE WHEN NOT EXISTS (
+          SELECT 1 FROM workflow_steps
+          WHERE id = NEW.target_step_id AND workflow_version_id = NEW.workflow_version_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_TRANSITION_TARGET_VERSION_MISMATCH') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS workflow_transitions_version_guard_update
+      BEFORE UPDATE OF workflow_version_id, source_step_id, target_step_id ON workflow_transitions
+      BEGIN
+        SELECT CASE WHEN NOT EXISTS (
+          SELECT 1 FROM workflow_steps
+          WHERE id = NEW.source_step_id AND workflow_version_id = NEW.workflow_version_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_TRANSITION_SOURCE_VERSION_MISMATCH') END;
+        SELECT CASE WHEN NOT EXISTS (
+          SELECT 1 FROM workflow_steps
+          WHERE id = NEW.target_step_id AND workflow_version_id = NEW.workflow_version_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_TRANSITION_TARGET_VERSION_MISMATCH') END;
+      END;
+
+      CREATE TABLE IF NOT EXISTS workflow_instances (
+        id TEXT PRIMARY KEY,
+        workflow_definition_id TEXT NOT NULL REFERENCES workflow_definitions(id) ON DELETE RESTRICT,
+        workflow_version_id TEXT NOT NULL REFERENCES workflow_versions(id) ON DELETE RESTRICT,
+        status TEXT NOT NULL DEFAULT 'running'
+          CHECK (status IN ('running', 'paused', 'completed', 'failed')),
+        current_step_id TEXT NOT NULL REFERENCES workflow_steps(id) ON DELETE RESTRICT,
+        context_json TEXT NOT NULL DEFAULT '{}',
+        step_count INTEGER NOT NULL DEFAULT 1 CHECK (step_count >= 1),
+        started_by TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        failed_at TEXT,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_workflow_instances_definition_status
+        ON workflow_instances(workflow_definition_id, status, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_workflow_instances_version_status
+        ON workflow_instances(workflow_version_id, status, started_at DESC);
+
+      CREATE TRIGGER IF NOT EXISTS workflow_instances_version_guard_insert
+      BEFORE INSERT ON workflow_instances
+      BEGIN
+        SELECT CASE WHEN NOT EXISTS (
+          SELECT 1 FROM workflow_versions
+          WHERE id = NEW.workflow_version_id AND workflow_id = NEW.workflow_definition_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_INSTANCE_VERSION_MISMATCH') END;
+        SELECT CASE WHEN NOT EXISTS (
+          SELECT 1 FROM workflow_steps
+          WHERE id = NEW.current_step_id AND workflow_version_id = NEW.workflow_version_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_INSTANCE_CURRENT_STEP_MISMATCH') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS workflow_instances_version_guard_update
+      BEFORE UPDATE OF workflow_definition_id, workflow_version_id, current_step_id ON workflow_instances
+      BEGIN
+        SELECT CASE WHEN NOT EXISTS (
+          SELECT 1 FROM workflow_versions
+          WHERE id = NEW.workflow_version_id AND workflow_id = NEW.workflow_definition_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_INSTANCE_VERSION_MISMATCH') END;
+        SELECT CASE WHEN NOT EXISTS (
+          SELECT 1 FROM workflow_steps
+          WHERE id = NEW.current_step_id AND workflow_version_id = NEW.workflow_version_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_INSTANCE_CURRENT_STEP_MISMATCH') END;
+      END;
+
+      -- This table is event-sourced and append-only by service contract.
+      -- Runtime state is a query-friendly projection, while the sequence is
+      -- the durable audit trail for starts, transitions, pauses, completion
+      -- and failures.
+      CREATE TABLE IF NOT EXISTS workflow_instance_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        instance_id TEXT NOT NULL REFERENCES workflow_instances(id) ON DELETE RESTRICT,
+        sequence INTEGER NOT NULL CHECK (sequence > 0),
+        event_type TEXT NOT NULL
+          CHECK (event_type IN ('start', 'transition', 'pause', 'resume', 'complete', 'fail')),
+        from_step_id TEXT REFERENCES workflow_steps(id) ON DELETE RESTRICT,
+        to_step_id TEXT REFERENCES workflow_steps(id) ON DELETE RESTRICT,
+        transition_id TEXT REFERENCES workflow_transitions(id) ON DELETE RESTRICT,
+        actor_type TEXT NOT NULL CHECK (actor_type IN ('human', 'agent', 'service')),
+        actor_id TEXT NOT NULL,
+        actor_label TEXT NOT NULL DEFAULT '',
+        evidence_json TEXT NOT NULL DEFAULT '[]',
+        context_patch_json TEXT NOT NULL DEFAULT '{}',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        UNIQUE(instance_id, sequence)
+      );
+      CREATE INDEX IF NOT EXISTS idx_workflow_instance_events_instance_sequence
+        ON workflow_instance_events(instance_id, sequence);
+      CREATE INDEX IF NOT EXISTS idx_workflow_instance_events_transition
+        ON workflow_instance_events(instance_id, transition_id, event_type);
+
+      CREATE TRIGGER IF NOT EXISTS workflow_events_version_guard_insert
+      BEFORE INSERT ON workflow_instance_events
+      BEGIN
+        SELECT CASE WHEN NEW.from_step_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM workflow_instances i
+          JOIN workflow_steps s ON s.id = NEW.from_step_id
+          WHERE i.id = NEW.instance_id AND s.workflow_version_id = i.workflow_version_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_EVENT_FROM_STEP_MISMATCH') END;
+        SELECT CASE WHEN NEW.to_step_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM workflow_instances i
+          JOIN workflow_steps s ON s.id = NEW.to_step_id
+          WHERE i.id = NEW.instance_id AND s.workflow_version_id = i.workflow_version_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_EVENT_TO_STEP_MISMATCH') END;
+        SELECT CASE WHEN NEW.transition_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM workflow_instances i
+          JOIN workflow_transitions t ON t.id = NEW.transition_id
+          WHERE i.id = NEW.instance_id AND t.workflow_version_id = i.workflow_version_id
+        ) THEN RAISE(ABORT, 'WORKFLOW_EVENT_TRANSITION_MISMATCH') END;
+      END;
+    `);
+
+    db.prepare(`
+      INSERT INTO schema_migrations (component, version, applied_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(component) DO UPDATE SET
+        version = excluded.version,
+        applied_at = excluded.applied_at
+      WHERE schema_migrations.version < excluded.version
+    `).run(WORKFLOW_REGISTRY_MIGRATION, WORKFLOW_REGISTRY_VERSION, new Date().toISOString());
+  });
+
+  try {
+    migrate();
+  } catch (error) {
+    throw new Error(
+      `[DB_MIGRATION] Failed to migrate ${WORKFLOW_REGISTRY_MIGRATION} to version ${WORKFLOW_REGISTRY_VERSION}`,
+      { cause: error }
+    );
+  }
+}
+
 export function initDatabase() {
   // 1. Settings Table
   db.exec(`
@@ -236,6 +954,7 @@ export function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id TEXT DEFAULT 'prj_general',
       content_type TEXT DEFAULT 'blog',
+      presentation_profile TEXT DEFAULT '',
       slug TEXT UNIQUE NOT NULL,
       title TEXT NOT NULL,
       summary TEXT NOT NULL,
@@ -250,6 +969,7 @@ export function initDatabase() {
       embedding TEXT DEFAULT '[]',
       read_time TEXT DEFAULT '4 MIN',
       created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT '',
       published INTEGER DEFAULT 1
     );
   `);
@@ -258,6 +978,7 @@ export function initDatabase() {
   try {
     const cols = db.prepare("PRAGMA table_info(blog_posts)").all().map(c => c.name);
     if (!cols.includes('content_type')) db.exec("ALTER TABLE blog_posts ADD COLUMN content_type TEXT DEFAULT 'blog'");
+    if (!cols.includes('presentation_profile')) db.exec("ALTER TABLE blog_posts ADD COLUMN presentation_profile TEXT DEFAULT ''");
     if (!cols.includes('project_id')) db.exec("ALTER TABLE blog_posts ADD COLUMN project_id TEXT DEFAULT 'prj_general'");
     if (!cols.includes('dimensions')) db.exec("ALTER TABLE blog_posts ADD COLUMN dimensions TEXT DEFAULT '{}'");
     if (!cols.includes('visibility')) db.exec("ALTER TABLE blog_posts ADD COLUMN visibility TEXT DEFAULT 'public'");
@@ -266,6 +987,7 @@ export function initDatabase() {
     if (!cols.includes('drive_file_id')) db.exec("ALTER TABLE blog_posts ADD COLUMN drive_file_id TEXT DEFAULT ''");
     if (!cols.includes('drive_modified_time')) db.exec("ALTER TABLE blog_posts ADD COLUMN drive_modified_time TEXT DEFAULT ''");
     if (!cols.includes('embedding')) db.exec("ALTER TABLE blog_posts ADD COLUMN embedding TEXT DEFAULT '[]'");
+    if (!cols.includes('updated_at')) db.exec("ALTER TABLE blog_posts ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''");
   } catch (mErr) {
     // Migration safe check
   }
@@ -290,6 +1012,106 @@ export function initDatabase() {
     }
   }
 
+  // Every row receives an explicit canonical display profile. This is a
+  // one-way, idempotent compatibility migration: `content_type` remains the
+  // legacy portal projection, while profile becomes the document-model field.
+  const hasPresentationProfileColumn = () => db.prepare('PRAGMA table_info(blog_posts)')
+    .all()
+    .some(column => column.name === 'presentation_profile');
+  if (!hasPresentationProfileColumn()) {
+    try {
+      db.transaction(() => {
+        db.exec("ALTER TABLE blog_posts ADD COLUMN presentation_profile TEXT DEFAULT ''");
+      })();
+    } catch (error) {
+      if (!hasPresentationProfileColumn()) {
+        throw new Error('[DB_MIGRATION] Failed to add blog_posts.presentation_profile', { cause: error });
+      }
+    }
+  }
+  db.prepare(`
+    UPDATE blog_posts
+    SET presentation_profile = CASE
+      WHEN LOWER(TRIM(COALESCE(content_type, ''))) = 'knowledge' THEN 'knowledge'
+      ELSE 'article'
+    END
+    WHERE TRIM(COALESCE(presentation_profile, '')) = ''
+  `).run();
+
+  // 5a. Database-owned folder hierarchy and stable document storage identity.
+  //
+  // `drive_path` remains immutable provenance for legacy Vault / Drive imports.
+  // Author-selected folders live here instead, so moving a document never
+  // rewrites its source identity or its binary asset directory.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS content_folders (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT REFERENCES content_folders(id) ON DELETE RESTRICT,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_content_folders_parent
+      ON content_folders(parent_id, sort_order, name);
+    -- SQLite considers NULL values distinct in ordinary UNIQUE constraints.
+    -- Coalescing root parent IDs gives roots the same duplicate protection as
+    -- children without manufacturing a sentinel foreign-key value.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_content_folders_parent_slug_unique
+      ON content_folders(COALESCE(parent_id, ''), slug COLLATE NOCASE);
+
+    CREATE TABLE IF NOT EXISTS content_document_storage (
+      post_id INTEGER PRIMARY KEY REFERENCES blog_posts(id) ON DELETE CASCADE,
+      storage_key TEXT NOT NULL UNIQUE,
+      state TEXT NOT NULL DEFAULT 'ready'
+        CHECK (state IN ('ready', 'missing')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    -- The binary stays in the document's opaque storage directory, while its
+    -- safe, database-owned manifest lives here.  This deliberately does not
+    -- reuse the legacy Vault/RAG asset projection: database uploads remain
+    -- canonical even when no Vault exists.
+    CREATE TABLE IF NOT EXISTS content_document_assets (
+      asset_id TEXT PRIMARY KEY,
+      post_id INTEGER NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
+      relative_path TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+      sha256 TEXT NOT NULL,
+      asset_kind TEXT NOT NULL DEFAULT 'other',
+      visibility TEXT NOT NULL DEFAULT 'private'
+        CHECK (visibility IN ('public', 'private')),
+      availability TEXT NOT NULL DEFAULT 'available'
+        CHECK (availability IN ('available', 'missing')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_content_document_assets_post
+      ON content_document_assets(post_id, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_content_document_assets_post_path_unique
+      ON content_document_assets(post_id, relative_path COLLATE NOCASE);
+  `);
+
+  const contentColumns = db.prepare('PRAGMA table_info(blog_posts)').all()
+    .map(column => column.name);
+  if (!contentColumns.includes('folder_id')) {
+    db.exec('ALTER TABLE blog_posts ADD COLUMN folder_id TEXT REFERENCES content_folders(id) ON DELETE SET NULL');
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_blog_posts_folder ON blog_posts(folder_id);
+  `);
+  // Older rows predate the explicit editing revision timestamp.  Preserve the
+  // historical publication date as their initial revision marker.
+  db.prepare(`
+    UPDATE blog_posts
+    SET updated_at = created_at
+    WHERE TRIM(COALESCE(updated_at, '')) = ''
+  `).run();
+
 
   // Create blog_posts indexes after migration
   const duplicateDriveSource = db.prepare(`
@@ -306,6 +1128,7 @@ export function initDatabase() {
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_blog_posts_content_type ON blog_posts(content_type);
+    CREATE INDEX IF NOT EXISTS idx_blog_posts_presentation_profile ON blog_posts(presentation_profile);
     CREATE INDEX IF NOT EXISTS idx_blog_posts_project ON blog_posts(project_id);
     CREATE INDEX IF NOT EXISTS idx_blog_posts_visibility ON blog_posts(visibility);
     CREATE INDEX IF NOT EXISTS idx_blog_posts_published ON blog_posts(published);
@@ -318,7 +1141,197 @@ export function initDatabase() {
   // Rebuild only for an unapplied version or when the recorded schema is damaged.
   ensureBlogPostsFtsSchema();
 
-  // 7. Messages Table (Uplink)
+  // 6b. Admin-owned taxonomy registry. It has a separate migration component
+  // because its vocabulary/schema evolves independently from content FTS.
+  ensureTaxonomyRegistrySchema();
+
+  // 6c. Database-owned typed, directed multilayer graph.  It is intentionally
+  // independent of both the Markdown vault projection and the legacy
+  // hybrid_rag_edges wikilink index.
+  ensureGraphRegistrySchema();
+
+  // 7. Hybrid Obsidian / SQL RAG index.
+  //
+  // `blog_posts` remains the public portal's content store.  The tables below
+  // are deliberately separate so frontmatter-only operational bindings,
+  // explicit wiki-link edges, and chunk-level retrieval data never have to be
+  // exposed through the public content API.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hybrid_rag_documents (
+      post_id INTEGER PRIMARY KEY,
+      document_id TEXT NOT NULL DEFAULT '',
+      source_path TEXT NOT NULL DEFAULT '',
+      source_hash TEXT NOT NULL DEFAULT '',
+      frontmatter_json TEXT NOT NULL DEFAULT '{}',
+      classification TEXT NOT NULL DEFAULT 'internal'
+        CHECK (classification IN ('public', 'internal', 'confidential', 'restricted')),
+      rag_index INTEGER NOT NULL DEFAULT 1 CHECK (rag_index IN (0, 1)),
+      indexed_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_hybrid_rag_documents_document_id
+      ON hybrid_rag_documents(document_id)
+      WHERE document_id <> '';
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_documents_classification
+      ON hybrid_rag_documents(classification, rag_index);
+
+    CREATE TABLE IF NOT EXISTS hybrid_rag_chunks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_id INTEGER NOT NULL,
+      ordinal INTEGER NOT NULL,
+      heading TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL,
+      token_estimate INTEGER NOT NULL DEFAULT 0,
+      source_start INTEGER NOT NULL DEFAULT 0,
+      source_end INTEGER NOT NULL DEFAULT 0,
+      chunk_hash TEXT NOT NULL,
+      embedding TEXT NOT NULL DEFAULT '[]',
+      UNIQUE(post_id, ordinal)
+    );
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_chunks_post ON hybrid_rag_chunks(post_id, ordinal);
+
+    CREATE TABLE IF NOT EXISTS hybrid_rag_edges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_post_id INTEGER NOT NULL,
+      target_post_id INTEGER,
+      target_reference TEXT NOT NULL,
+      target_slug TEXT NOT NULL DEFAULT '',
+      target_heading TEXT NOT NULL DEFAULT '',
+      label TEXT NOT NULL DEFAULT '',
+      relation_type TEXT NOT NULL DEFAULT 'wikilink',
+      occurrence_count INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      UNIQUE(source_post_id, target_reference, target_heading, relation_type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_edges_source ON hybrid_rag_edges(source_post_id);
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_edges_target ON hybrid_rag_edges(target_post_id);
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_edges_target_slug ON hybrid_rag_edges(target_slug);
+
+    CREATE TABLE IF NOT EXISTS hybrid_rag_sql_bindings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_id INTEGER NOT NULL,
+      sql_project_id TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'operational',
+      entity_type TEXT NOT NULL DEFAULT 'project',
+      entity_id TEXT NOT NULL,
+      fact_profiles TEXT NOT NULL DEFAULT '[]',
+      classification TEXT NOT NULL DEFAULT 'internal'
+        CHECK (classification IN ('public', 'internal', 'confidential', 'restricted')),
+      created_at TEXT NOT NULL,
+      UNIQUE(post_id, sql_project_id, provider, entity_type, entity_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_sql_bindings_post ON hybrid_rag_sql_bindings(post_id);
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_sql_bindings_project ON hybrid_rag_sql_bindings(sql_project_id);
+
+    -- Binary material (DWG, model, media, PDF) remains next to its Markdown
+    -- owner or at an explicit external URL. SQLite stores only a safe manifest
+    -- projection: the binary is never embedded or indexed as RAG text.
+    CREATE TABLE IF NOT EXISTS hybrid_rag_assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_id INTEGER NOT NULL,
+      provider TEXT NOT NULL,
+      file_id TEXT NOT NULL DEFAULT '',
+      uri TEXT NOT NULL,
+      mime_type TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      asset_kind TEXT NOT NULL DEFAULT 'other',
+      source_kind TEXT NOT NULL DEFAULT 'external'
+        CHECK (source_kind IN ('local', 'external')),
+      preview_uri TEXT NOT NULL DEFAULT '',
+      visibility TEXT NOT NULL DEFAULT 'private'
+        CHECK (visibility IN ('public', 'private')),
+      availability TEXT NOT NULL DEFAULT 'available'
+        CHECK (availability IN ('available', 'missing')),
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      UNIQUE(post_id, provider, uri)
+    );
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_assets_post ON hybrid_rag_assets(post_id);
+
+    -- Local snapshots make development and an air-gapped pilot runnable. In a
+    -- production deployment they are replaced by the allowlisted fact gateway;
+    -- no raw SQL is ever stored or accepted by this schema.
+    CREATE TABLE IF NOT EXISTS hybrid_rag_sql_snapshots (
+      sql_project_id TEXT PRIMARY KEY,
+      facts_json TEXT NOT NULL DEFAULT '{}',
+      source TEXT NOT NULL DEFAULT 'local_snapshot',
+      as_of TEXT NOT NULL,
+      expires_at TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    -- Retrieval auditing intentionally records only identifiers and hashes,
+    -- never prompt text, document bodies, or operational fact values.
+    CREATE TABLE IF NOT EXISTS hybrid_rag_retrieval_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor TEXT NOT NULL,
+      request_id TEXT NOT NULL DEFAULT '',
+      action TEXT NOT NULL,
+      query_hash TEXT NOT NULL DEFAULT '',
+      document_ids TEXT NOT NULL DEFAULT '[]',
+      chunk_ids TEXT NOT NULL DEFAULT '[]',
+      sql_project_ids TEXT NOT NULL DEFAULT '[]',
+      fact_profiles TEXT NOT NULL DEFAULT '[]',
+      outcome TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_retrieval_audit_created
+      ON hybrid_rag_retrieval_audit(created_at DESC);
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS hybrid_rag_chunks_fts USING fts5(
+      content,
+      heading,
+      tokenize='unicode61'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS hybrid_rag_chunks_ai
+      AFTER INSERT ON hybrid_rag_chunks BEGIN
+      INSERT INTO hybrid_rag_chunks_fts(rowid, content, heading)
+      VALUES (new.id, new.content, new.heading);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS hybrid_rag_chunks_ad
+      AFTER DELETE ON hybrid_rag_chunks BEGIN
+      DELETE FROM hybrid_rag_chunks_fts WHERE rowid = old.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS hybrid_rag_chunks_au
+      AFTER UPDATE ON hybrid_rag_chunks BEGIN
+      DELETE FROM hybrid_rag_chunks_fts WHERE rowid = old.id;
+      INSERT INTO hybrid_rag_chunks_fts(rowid, content, heading)
+      VALUES (new.id, new.content, new.heading);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS hybrid_rag_blog_posts_ad
+      AFTER DELETE ON blog_posts BEGIN
+      DELETE FROM hybrid_rag_edges
+      WHERE source_post_id = old.id OR target_post_id = old.id;
+      DELETE FROM hybrid_rag_sql_bindings WHERE post_id = old.id;
+      DELETE FROM hybrid_rag_assets WHERE post_id = old.id;
+      DELETE FROM hybrid_rag_chunks WHERE post_id = old.id;
+      DELETE FROM hybrid_rag_documents WHERE post_id = old.id;
+    END;
+  `);
+
+  // Additive asset-manifest migration. Older installs only know external
+  // Drive-style references; these columns let the same index describe a
+  // document-folder DWG/PDF/media file without ever exposing a raw OS path.
+  const hybridAssetColumns = db.prepare('PRAGMA table_info(hybrid_rag_assets)').all()
+    .map(column => column.name);
+  const addHybridAssetColumn = (name, sql) => {
+    if (!hybridAssetColumns.includes(name)) db.exec(`ALTER TABLE hybrid_rag_assets ADD COLUMN ${sql}`);
+  };
+  addHybridAssetColumn('asset_kind', "asset_kind TEXT NOT NULL DEFAULT 'other'");
+  addHybridAssetColumn('source_kind', "source_kind TEXT NOT NULL DEFAULT 'external'");
+  addHybridAssetColumn('preview_uri', "preview_uri TEXT NOT NULL DEFAULT ''");
+  addHybridAssetColumn('visibility', "visibility TEXT NOT NULL DEFAULT 'private'");
+  addHybridAssetColumn('availability', "availability TEXT NOT NULL DEFAULT 'available'");
+  addHybridAssetColumn('metadata_json', "metadata_json TEXT NOT NULL DEFAULT '{}'");
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_hybrid_rag_assets_public_post
+      ON hybrid_rag_assets(post_id, visibility, availability);
+  `);
+
+  // 8. Messages Table (Uplink)
   db.exec(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -363,6 +1376,11 @@ export function initDatabase() {
       created_at TEXT NOT NULL
     );
   `);
+
+  // 7b. Native Workflow v1 is initialized after the general audit table: all
+  // runtime mutations are both event-sourced in their own append-only stream
+  // and mirrored to the global audit log.
+  ensureWorkflowRegistrySchema();
 
   // 8. Agent Messages & Handoff Table (Fast, Audited Multi-Agent Communication)
   db.exec(`
@@ -603,8 +1621,8 @@ function seedData() {
   const blogCount = db.prepare('SELECT count(*) as count FROM blog_posts').get().count;
   if (blogCount === 0) {
     const insertBlog = db.prepare(`
-      INSERT INTO blog_posts (project_id, content_type, slug, title, summary, content, category, dimensions, visibility, audio_url, read_time, created_at, published)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO blog_posts (project_id, content_type, presentation_profile, slug, title, summary, content, category, dimensions, visibility, audio_url, read_time, created_at, updated_at, published)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const initialItems = [
@@ -852,6 +1870,7 @@ Ez a dokumentum **szigorúan belső kutatási célokat szolgál**, a nyilvános 
       insertBlog.run(
         item.project_id,
         item.content_type || 'blog',
+        item.content_type === 'knowledge' ? 'knowledge' : 'article',
         item.slug,
         item.title,
         item.summary,
@@ -861,6 +1880,7 @@ Ez a dokumentum **szigorúan belső kutatási célokat szolgál**, a nyilvános 
         item.visibility,
         item.audio_url,
         item.read_time,
+        item.created_at,
         item.created_at,
         item.published
       );

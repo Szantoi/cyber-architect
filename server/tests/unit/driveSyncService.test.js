@@ -141,6 +141,25 @@ afterEach(() => {
 });
 
 describe('Drive cloud crawler', () => {
+  it('blocks the legacy cloud importer outside tests', async () => {
+    process.env.NODE_ENV = 'production';
+    vi.spyOn(driveSyncService, 'getStatus').mockReturnValue(cloudStatus({
+      source_of_truth: 'LOCAL_VAULT',
+      configuration_errors: []
+    }));
+    const crawlSpy = vi.spyOn(driveSyncService, 'crawlCloudSourceWithTokenFallback');
+
+    const result = await driveSyncService.syncAll('TEST');
+
+    expect(result).toMatchObject({
+      mode: 'DISABLED',
+      source_of_truth: 'LOCAL_VAULT',
+      processed: 0,
+      errors: [expect.objectContaining({ code: 'CLOUD_PULL_DISABLED' })]
+    });
+    expect(crawlSpy).not.toHaveBeenCalled();
+  });
+
   it('follows every nextPageToken, accepts case-insensitive Markdown extensions, and reports empty files', async () => {
     const listUrls = [];
     const fetchMock = vi.fn(async input => {
@@ -548,7 +567,7 @@ describe('Local mirror source cardinality', () => {
 
     vi.spyOn(driveSyncService, 'getStatus').mockReturnValue({
       mode: 'LOCAL_DRIVE_MIRROR',
-      source_of_truth: 'LOCAL_DRIVE_MIRROR',
+      source_of_truth: 'LOCAL_VAULT',
       knowledge_vault_dir: 'knowledge-root',
       blog_vault_dir: 'blog-root',
       configuration_errors: []
@@ -617,7 +636,7 @@ describe('Local mirror source cardinality', () => {
 
     vi.spyOn(driveSyncService, 'getStatus').mockReturnValue({
       mode: 'LOCAL_DRIVE_MIRROR',
-      source_of_truth: 'LOCAL_DRIVE_MIRROR',
+      source_of_truth: 'LOCAL_VAULT',
       knowledge_vault_dir: 'knowledge-root',
       blog_vault_dir: 'blog-root',
       configuration_errors: []
@@ -1091,7 +1110,7 @@ dimensions:
     expect(() => parseFrontmatter('---\nfalse\n---\nbody')).toThrow('INVALID_FRONTMATTER_ROOT');
   });
 
-  it('round-trips YAML-safe Unicode, quotes, newlines, URLs and nested dimensions', () => {
+  it('round-trips YAML-safe Unicode, quotes, newlines, URLs and flat taxonomy lists', () => {
     const post = {
       title: 'Árvíztűrő "tükör"\nMásodik \\ sor',
       slug: 'yaml-round-trip',
@@ -1107,7 +1126,7 @@ dimensions:
       dimensions: {
         iparag: ['Gyártás'],
         technologia: ['Node.js', 'SQLite'],
-        context: { emoji: '🔒', multiline: 'első\nmásodik' }
+        celcsoport: ['Műszaki Vezető']
       },
       content: '# Unicode tartalom\n\nMűködik.'
     };
@@ -1120,7 +1139,7 @@ dimensions:
       title: post.title,
       slug: post.slug,
       project_id: post.project_id,
-      content_type: post.content_type,
+      presentation_profile: 'knowledge',
       summary: post.summary,
       category: post.category,
       visibility: post.visibility,
@@ -1128,13 +1147,23 @@ dimensions:
       read_time: post.read_time,
       audio_url: post.audio_url,
       video_url: post.video_url,
-      dimensions: post.dimensions
+      schema_version: 2,
+      taxonomy_schema: 2,
+      tax_industry: post.dimensions.iparag,
+      tax_technology: post.dimensions.technologia,
+      tax_audience_role: post.dimensions.celcsoport
     }));
+    expect(parsed.metadata).not.toHaveProperty('content_type');
+    expect(parsed.metadata).not.toHaveProperty('dimensions');
     expect(parsed.content).toBe(post.content);
     expect(parseFrontmatter(formatPostToMarkdown({
       ...post,
       dimensions: '{not-json'
-    })).metadata.dimensions).toEqual({});
+    })).metadata).toMatchObject({
+      tax_industry: [],
+      tax_technology: [],
+      tax_audience_role: []
+    });
   });
 
   it('resolves OAuth paths relative to the app root and reports honest status timestamps', () => {
@@ -1234,6 +1263,15 @@ dimensions:
     delete process.env.DRIVE_BLOG_FOLDER_ID;
     vi.spyOn(driveSyncService, 'hasUsableServiceAccountCredentials').mockReturnValue(false);
     vi.spyOn(driveSyncService, 'getTokens').mockReturnValue(null);
+    const canonicalDocument = path.join(contentRoot, 'Content', '01_Test', 'canonical', 'index.md');
+    fs.mkdirSync(path.dirname(canonicalDocument), { recursive: true });
+    fs.writeFileSync(canonicalDocument, '# Canonical vault document\n');
+    expect(driveSyncService.getStatus()).toMatchObject({
+      content_vault_dir: path.join(contentRoot, 'Content'),
+      content_files_count: 1,
+      local_files_detected: 1,
+      legacy_local_files_detected: 0
+    });
     const crawlSpy = vi.spyOn(driveSyncService, 'crawlLocalFolder').mockReturnValue([]);
 
     const result = await driveSyncService.syncAll('TEST', { dryRun: true });
@@ -1390,12 +1428,12 @@ dimensions:
     const result = await driveSyncService.syncAll('TEST', { dryRun: true });
     expect(localCrawlSpy).not.toHaveBeenCalled();
     expect(result).toMatchObject({
-      mode: 'CONFIGURATION_ERROR',
-      source_of_truth: 'UNAVAILABLE',
+      mode: 'DISABLED',
+      source_of_truth: 'LOCAL_VAULT',
       processed: 0,
       discovered: 0
     });
-    expect(result.errors.map(issue => issue.code)).toEqual(status.configuration_errors.map(issue => issue.code));
+    expect(result.errors).toEqual([expect.objectContaining({ code: 'CLOUD_PULL_DISABLED' })]);
   });
 
   it('requires credentials for configured cloud folders and never falls back to local crawling', async () => {
@@ -1441,7 +1479,7 @@ dimensions:
     credentialSpy.mockReturnValue(false);
     expect(driveSyncService.getStatus()).toMatchObject({
       mode: 'LOCAL_DRIVE_MIRROR',
-      source_of_truth: 'LOCAL_DRIVE_MIRROR',
+      source_of_truth: 'LOCAL_VAULT',
       configuration_errors: []
     });
   });
@@ -1459,7 +1497,7 @@ dimensions:
 
     expect(driveSyncService.getStatus()).toMatchObject({
       mode: 'GOOGLE_SERVICE_ACCOUNT',
-      source_of_truth: 'GOOGLE_DRIVE_CLOUD',
+      source_of_truth: 'LOCAL_VAULT',
       configuration_errors: []
     });
   });
@@ -1502,6 +1540,28 @@ dimensions:
     expect(statusSpy).not.toHaveBeenCalled();
   });
 
+  it('blocks the generic DB-to-cloud exporter outside tests before it can overwrite the vault', async () => {
+    process.env.NODE_ENV = 'production';
+    const statusSpy = vi.spyOn(driveSyncService, 'getStatus');
+    const writeSpy = vi.spyOn(fs, 'writeFileSync');
+
+    const result = await driveSyncService.exportPostToDrive({
+      slug: 'vault-authoritative-export',
+      title: 'Vault authoritative export',
+      content_type: 'knowledge',
+      content: '# Must not write'
+    });
+
+    expect(result).toMatchObject({
+      status: 'DISABLED',
+      local_written: false,
+      cloud_written: false,
+      cloud_skip_reason: 'CLOUD_EXPORT_DISABLED'
+    });
+    expect(statusSpy).not.toHaveBeenCalled();
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
   it('reports a successful local-only export without pretending a cloud write occurred', async () => {
     const contentRoot = fs.mkdtempSync(path.join(process.cwd(), '.drive-export-content-root-test-'));
     temporaryDirectories.push(contentRoot);
@@ -1510,7 +1570,7 @@ dimensions:
     const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
     vi.spyOn(driveSyncService, 'getStatus').mockReturnValue({
       mode: 'LOCAL_DRIVE_MIRROR',
-      source_of_truth: 'LOCAL_DRIVE_MIRROR',
+      source_of_truth: 'LOCAL_VAULT',
       drive_folder_id: null,
       drive_knowledge_folder_id: null,
       drive_blog_folder_id: null,

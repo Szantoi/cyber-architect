@@ -3,8 +3,17 @@ import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import ThemeToggle from './ThemeToggle';
+import { useAdminPreview } from '../context/AdminPreviewContext.jsx';
 
 const MORE_MENU_ITEMS = [
+  {
+    id: 'graph',
+    label: 'TUDÁSGRÁF',
+    description: 'Blog és tudástár wikilink-hálója',
+    to: '/graph',
+    icon: 'account_tree',
+    accent: 'dark:text-neonMagenta text-fuchsia-800 dark:border-neonMagenta/60 border-fuchsia-800'
+  },
   {
     id: 'mcp',
     label: 'MCP UPLINK',
@@ -65,6 +74,7 @@ const preferredScrollBehavior = () => (
 const Navbar = () => {
   const location = useLocation();
   const isHome = location.pathname === '/';
+  const { canPreview, enterAdminPreview, exitAdminPreview, isAdminPreview } = useAdminPreview();
 
   // Handle hash scrolling with fixed navbar offset
   const scrollToSection = (hash) => {
@@ -214,12 +224,21 @@ const Navbar = () => {
 
   const isKnowledgeActive = location.pathname.startsWith('/knowledge') || location.pathname.startsWith('/docs');
   const isBlogActive = location.pathname.startsWith('/blog');
+  const isGraphActive = location.pathname.startsWith('/graph');
   const isMcpActive = location.pathname.startsWith('/mcp') || location.pathname.startsWith('/agent');
 
   return (
     <>
       {/* ── Top Tactical Navigation Bar (Desktop & Mobile Header) ── */}
-      <nav aria-label="Fő navigáció" className="fixed top-0 w-full z-50 flex justify-between items-center px-4 md:px-6 py-3 md:py-4 max-w-full dark:bg-[#090d1d]/90 bg-[#d4dce8]/95 backdrop-blur-xl border-b dark:border-white/10 border-b-2 border-slate-900 transition-colors duration-200 rounded-none shadow-sm dark:shadow-none select-none">
+      <nav
+        aria-label="Fő navigáció"
+        data-admin-active={isAdminPreview ? 'true' : 'false'}
+        className={`fixed top-0 z-50 flex w-full max-w-full items-center justify-between border-b px-4 py-3 backdrop-blur-xl transition-all duration-200 md:px-6 md:py-4 select-none ${
+          isAdminPreview
+            ? 'border-neonMagenta/75 dark:bg-[#160a1d]/94 bg-fuchsia-100/95 shadow-[0_3px_18px_rgba(255,0,255,0.2)]'
+            : 'dark:border-white/10 border-b-2 border-slate-900 dark:bg-[#090d1d]/90 bg-[#d4dce8]/95 shadow-sm dark:shadow-none'
+        }`}
+      >
         <Link 
           to="/" 
           onClick={handleLogoClick}
@@ -261,6 +280,9 @@ const Navbar = () => {
           >
             BLOG
           </Link>
+          <Link to="/graph" aria-current={isGraphActive ? 'page' : undefined} className={`font-mono text-[10px] uppercase tracking-[0.2em] font-black transition-all duration-300 ${isGraphActive ? 'dark:text-neonCyan text-cyan-800 underline underline-offset-8 decoration-cyan-800 font-bold' : 'dark:text-slate-400 text-slate-800 dark:hover:text-neonCyan hover:text-cyan-800'}`}>
+            TUDÁSGRÁF
+          </Link>
           <Link 
             to="/mcp"
             aria-current={isMcpActive ? 'page' : undefined}
@@ -296,20 +318,22 @@ const Navbar = () => {
         {/* Right Header Actions */}
         <div className="flex gap-2.5 items-center">
           <ThemeToggle />
-
-          <Link 
-            to="/admin"
-            title="Overseer Admin Console"
-            aria-current={location.pathname === '/admin' ? 'page' : undefined}
-            className={`p-1.5 sm:p-2 transition-all rounded-none flex items-center gap-1.5 ${
-              location.pathname === '/admin'
-                ? 'dark:bg-neonCyan dark:text-black bg-slate-900 text-white border-2 border-slate-900 shadow-[2px_2px_0_#0f172a]'
-                : 'dark:border-transparent dark:text-neonCyan text-slate-900 border-2 border-slate-900 bg-white/40 hover:bg-slate-900 hover:text-white shadow-[2px_2px_0_#0f172a]'
+          {canPreview && <button
+            type="button"
+            data-testid="admin-view-toggle"
+            aria-pressed={isAdminPreview}
+            aria-label={isAdminPreview ? 'Publikus nézetre váltás' : 'Admin nézetre váltás'}
+            title={isAdminPreview ? 'Publikus nézetre váltás' : 'Admin nézetre váltás'}
+            onClick={isAdminPreview ? exitAdminPreview : enterAdminPreview}
+            className={`flex items-center gap-1.5 border px-2 py-1.5 font-mono text-[8px] font-black uppercase tracking-[0.1em] transition-all sm:px-2.5 ${
+              isAdminPreview
+                ? 'border-neonMagenta bg-neonMagenta/18 text-neonMagenta shadow-[0_0_14px_rgba(255,0,255,0.22)] hover:bg-neonMagenta hover:text-slate-950'
+                : 'border-neonCyan/60 bg-neonCyan/8 text-neonCyan hover:bg-neonCyan hover:text-slate-950'
             }`}
           >
-            <span aria-hidden="true" className="material-symbols-outlined text-lg sm:text-xl">terminal</span>
-            <span className="font-mono text-[9px] font-black hidden sm:inline uppercase">ADMIN</span>
-          </Link>
+            <span aria-hidden="true" className="material-symbols-outlined text-base leading-none">{isAdminPreview ? 'shield' : 'visibility'}</span>
+            <span className="hidden sm:inline">{isAdminPreview ? 'ADMIN AKTÍV' : 'PUBLIKUS'}</span>
+          </button>}
         </div>
       </nav>
 

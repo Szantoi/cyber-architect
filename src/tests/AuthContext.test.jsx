@@ -1,40 +1,87 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
-import { AuthProvider, useAuth } from '../context/AuthContext';
+import { AuthProvider, useAuth } from '../context/AuthContext.jsx';
+
+const wrapper = ({ children }) => <AuthProvider>{children}</AuthProvider>;
+const VALID_TOKEN = 'verified-admin-jwt-token';
 
 describe('AuthContext Suite', () => {
   beforeEach(() => {
     localStorage.clear();
-    vi.restoreAllMocks();
+    vi.stubGlobal('fetch', vi.fn());
   });
 
-  it('provides unauthenticated initial state when token is absent in localStorage', () => {
-    const wrapper = ({ children }) => <AuthProvider>{children}</AuthProvider>;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it('provides an unauthenticated initial state when no token is present', () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     expect(result.current.adminToken).toBeNull();
     expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.isAuthChecking).toBe(false);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it('initializes authenticated state from pre-existing localStorage token', () => {
-    localStorage.setItem('cyber_admin_token', 'test-jwt-token-xyz');
-
-    const wrapper = ({ children }) => <AuthProvider>{children}</AuthProvider>;
-    const { result } = renderHook(() => useAuth(), { wrapper });
-
-    expect(result.current.adminToken).toBe('test-jwt-token-xyz');
-    expect(result.current.isAuthenticated).toBe(true);
-  });
-
-  it('updates token and localStorage upon successful login', async () => {
-    const fakeToken = 'mock-signed-jwt-token';
-    globalThis.fetch = vi.fn().mockResolvedValue({
+  it('does not trust a persisted token until the server validates its session', async () => {
+    localStorage.setItem('cyber_admin_token', VALID_TOKEN);
+    globalThis.fetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ token: fakeToken })
+      status: 200,
+      json: async () => ({ authenticated: true, role: 'OVERSEER_ADMIN' })
     });
 
-    const wrapper = ({ children }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    expect(result.current.adminToken).toBeNull();
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.isAuthChecking).toBe(true);
+
+    await waitFor(() => expect(result.current.isAuthenticated).toBe(true));
+    expect(result.current.adminToken).toBe(VALID_TOKEN);
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/admin/session', expect.objectContaining({
+      headers: { 'x-admin-token': VALID_TOKEN }
+    }));
+  });
+
+  it('purges a rejected persisted token and stays unauthenticated', async () => {
+    localStorage.setItem('cyber_admin_token', 'forged-token');
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 401 });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isAuthChecking).toBe(false));
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.adminToken).toBeNull();
+    expect(localStorage.getItem('cyber_admin_token')).toBeNull();
+  });
+
+  it('purges a valid token that the server does not confirm as an admin session', async () => {
+    localStorage.setItem('cyber_admin_token', VALID_TOKEN);
+    globalThis.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ authenticated: true, role: 'VIEWER' })
+    });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.isAuthChecking).toBe(false));
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.adminToken).toBeNull();
+    expect(localStorage.getItem('cyber_admin_token')).toBeNull();
+  });
+
+  it('updates token and authenticated state upon a successful PIN login', async () => {
+    const fakeToken = 'mock-signed-jwt-token';
+    globalThis.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ token: fakeToken, role: 'OVERSEER_ADMIN' })
+    });
+
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     let response;
@@ -48,20 +95,24 @@ describe('AuthContext Suite', () => {
     expect(localStorage.getItem('cyber_admin_token')).toBe(fakeToken);
   });
 
-  it('clears token on logout', () => {
-    localStorage.setItem('cyber_admin_token', 'token-to-be-removed');
-
-    const wrapper = ({ children }) => <AuthProvider>{children}</AuthProvider>;
+  it('clears a validated session and its persisted token on logout', async () => {
+    localStorage.setItem('cyber_admin_token', VALID_TOKEN);
+    globalThis.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ authenticated: true, role: 'OVERSEER_ADMIN' })
+    });
     const { result } = renderHook(() => useAuth(), { wrapper });
 
-    expect(result.current.isAuthenticated).toBe(true);
+    await waitFor(() => expect(result.current.isAuthenticated).toBe(true));
 
     act(() => {
       result.current.logoutAdmin();
     });
 
-    expect(result.current.adminToken).toBeNull();
     expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.adminToken).toBeNull();
     expect(localStorage.getItem('cyber_admin_token')).toBeNull();
   });
+
 });

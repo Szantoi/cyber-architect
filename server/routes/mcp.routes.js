@@ -77,12 +77,13 @@ mcpRouter.get('/tools', (req, res) => {
       {
         name: 'search_knowledge',
         type: 'READ / RAG',
-        description: 'Search the closed corporate Knowledge Base and Blog using hybrid FTS5 and vector cosine similarity.',
+        description: 'Search every canonical document profile using hybrid FTS5 and vector cosine similarity. Content type remains a legacy portal alias.',
         inputSchema: {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Search term or technical concept' },
-            content_type: { type: 'string', enum: ['knowledge', 'blog', 'all'], description: 'Content type filter' },
+            content_type: { type: 'string', enum: ['knowledge', 'blog', 'all'], default: 'all', description: 'Legacy portal projection filter; default is all canonical documents' },
+            presentation_profile: { type: 'string', enum: ['knowledge', 'article', 'blog', 'all'], description: 'Optional display-profile filter; blog aliases article' },
             project_id: { type: 'string', description: 'Optional project workspace filter' },
             category: { type: 'string', description: 'Optional category filter' },
             limit: { type: 'number', description: 'Max results to return (default: 10)' }
@@ -93,11 +94,12 @@ mcpRouter.get('/tools', (req, res) => {
       {
         name: 'get_knowledge_article',
         type: 'READ / DOC',
-        description: 'Fetch full markdown content, frontmatter dimensions and metadata of a knowledge article by slug.',
+        description: 'Fetch full Markdown content, frontmatter dimensions and metadata of one canonical document by slug.',
         inputSchema: {
           type: 'object',
           properties: {
-            slug: { type: 'string', description: 'The unique slug identifier of the article' }
+            slug: { type: 'string', description: 'The unique slug identifier of the document' },
+            presentation_profile: { type: 'string', enum: ['knowledge', 'article', 'blog', 'all'], description: 'Optional display-profile filter; blog aliases article' }
           },
           required: ['slug']
         }

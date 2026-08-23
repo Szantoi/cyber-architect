@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useAdminPreview } from './AdminPreviewContext.jsx';
 
 const ContentContext = createContext(null);
 
@@ -48,6 +49,7 @@ const DEFAULT_SETTINGS = {
 };
 
 export const ContentProvider = ({ children }) => {
+  const { viewerFetch } = useAdminPreview();
   const [content, setContent] = useState({
     settings: DEFAULT_SETTINGS,
     skills: [],
@@ -59,7 +61,7 @@ export const ContentProvider = ({ children }) => {
   const fetchContent = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/content');
+      const res = await viewerFetch('/api/content');
       if (res.ok) {
         const data = await res.json();
         let parsedSteps = DEFAULT_DIAGNOSTICS_STEPS;
@@ -89,7 +91,7 @@ export const ContentProvider = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [viewerFetch]);
 
   useEffect(() => {
     fetchContent();

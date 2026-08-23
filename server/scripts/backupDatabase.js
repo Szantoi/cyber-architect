@@ -4,29 +4,14 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import { logger } from '../logger.js';
+import {
+  resolveDatabasePath
+} from '../config/databasePath.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const APP_ROOT = path.resolve(__dirname, '../..');
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
 
-/**
- * Resolve the live database exactly like server/db.js does:
- * an explicit file wins, otherwise portfolio.sqlite lives in the configured
- * data directory (or the application's data directory by default).
- */
-export function resolveDatabasePath(env = process.env, appRoot = APP_ROOT) {
-  if (env.SQLITE_DB_PATH) {
-    return path.resolve(env.SQLITE_DB_PATH);
-  }
-
-  const dataDir = env.SQLITE_DATA_DIR
-    ? path.resolve(env.SQLITE_DATA_DIR)
-    : path.join(appRoot, 'data');
-
-  return path.join(dataDir, 'portfolio.sqlite');
-}
+export { resolveDatabasePath };
 
 function publishWithoutOverwrite(snapshotPath, backupFolder, baseName) {
   for (let suffix = 0; suffix < 10_000; suffix += 1) {

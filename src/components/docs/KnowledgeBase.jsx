@@ -15,19 +15,20 @@ const KnowledgeBase = () => {
       vaultType="knowledge"
       baseRoute="/knowledge"
       apiEndpoints={{
-        list: '/api/docs',
-        search: '/api/docs/search',
-        doc: (slug) => `/api/docs/${slug}`,
-        related: (slug) => `/api/docs/related/${slug}`
+        // Canonical document collection: it contains both knowledge material
+        // and public blog articles, preserving each item's source profile.
+        list: '/api/documents',
+        search: '/api/documents/search',
+        doc: (slug) => `/api/documents/${slug}`
       }}
       headerConfig={{
-        badge: 'CYBER-ARCHITECT // KNOWLEDGE VAULT & MŰSZAKI TUDÁSTÁR',
-        title: 'Iparági AI Automatizálás & Műszaki Tudástár.',
-        description: 'Ez az archívum a mérnöki és gyártási folyamatautomatizáció, a zárt vállalati RAG tudásbázisok, valamint a C# .NET / Python szoftverintegrációk valós esettanulmányait és kódmintáit gyűjti egybe.',
+        badge: 'CYBER-ARCHITECT // TELJES CIKKADATBÁZIS',
+        title: 'Iparági AI Automatizálás, Tudástár és Blog.',
+        description: 'A teljes szakmai cikkadatbázis egy helyen: tudástári dokumentumok, blogcikkek, esettanulmányok és kódminták egységes, kereshető archívuma.',
         version: 'v2.0',
-        statusBadge: '// KNOWLEDGE_RAG_ACTIVE',
-        hubButtonLabel: 'TUDÁSTÁR_BEMUTATÓ_HUB',
-        headerTitle: 'KNOWLEDGE_VAULT'
+        statusBadge: '// UNIFIED_DOCUMENT_SEARCH_ACTIVE',
+        hubButtonLabel: 'TELJES_CIKKADATBÁZIS',
+        headerTitle: 'TELJES_TUDÁSTÁR'
       }}
     />
   );

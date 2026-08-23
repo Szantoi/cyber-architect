@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'cyber-architect-';
-const CACHE_NAME = `${CACHE_PREFIX}v3`;
+const CACHE_NAME = `${CACHE_PREFIX}v4`;
 const STATIC_ASSETS = [
   '/index.html',
   '/manifest.json',

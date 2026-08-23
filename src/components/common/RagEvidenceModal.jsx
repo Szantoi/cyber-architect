@@ -2,20 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useModalFocusTrap } from '../../hooks/useModalFocusTrap';
+import { presentationProfileOf } from '../../utils/presentationProfile.js';
+import { useAdminPreview } from '../../context/AdminPreviewContext.jsx';
 
 /**
  * ============================================================================
  * RAG EVIDENCE MODAL // TACTICAL INSIGHTS & PROOF EXPLORER
  * ============================================================================
  * Élő RAG keresési találatok, hibrid relevanciapontszámok és szövegrészletek
- * megjelenítése felugró taktikai ablakban, közvetlen navigációval a Blog és
- * Tudástár modulokba.
+ * megjelenítése felugró taktikai ablakban, közvetlen navigációval a két
+ * megjelenítési profil kompatibilis nézeteibe.
  */
 const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBadge = 'RAG_EVIDENCE_GATEWAY' }) => {
   const navigate = useNavigate();
+  const { viewerFetch } = useAdminPreview();
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
-  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'blog' | 'knowledge'
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'article' | 'knowledge'
   const modalRef = useModalFocusTrap(isOpen, onClose);
 
   useEffect(() => {
@@ -24,7 +27,7 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
     const fetchEvidence = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/search/unified?q=${encodeURIComponent(searchQuery)}&scope=all&limit=8`);
+        const res = await viewerFetch(`/api/search/unified?q=${encodeURIComponent(searchQuery)}&scope=all&limit=8`);
         if (res.ok) {
           const data = await res.json();
           setResults(data.results || []);
@@ -40,7 +43,7 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
     };
 
     fetchEvidence();
-  }, [isOpen, searchQuery]);
+  }, [isOpen, searchQuery, viewerFetch]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -55,16 +58,16 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
 
   if (!isOpen) return null;
 
-  const blogResults = results.filter(r => r.type === 'blog' || r.content_type === 'blog');
-  const knowledgeResults = results.filter(r => r.type === 'knowledge' || r.content_type === 'knowledge');
+  const articleResults = results.filter(result => presentationProfileOf(result) === 'article');
+  const knowledgeResults = results.filter(result => presentationProfileOf(result) === 'knowledge');
 
   const filteredResults = activeFilter === 'all' 
     ? results 
-    : (activeFilter === 'blog' ? blogResults : knowledgeResults);
+    : (activeFilter === 'article' ? articleResults : knowledgeResults);
 
   const handleNavigateFullSearch = (targetType) => {
     onClose();
-    const targetRoute = targetType === 'blog' ? '/blog' : '/knowledge';
+    const targetRoute = targetType === 'article' ? '/blog' : '/knowledge';
     navigate(`${targetRoute}?q=${encodeURIComponent(searchQuery)}`);
   };
 
@@ -148,15 +151,15 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
               </button>
               <button
                 type="button"
-                onClick={() => setActiveFilter('blog')}
-                aria-pressed={activeFilter === 'blog'}
+                onClick={() => setActiveFilter('article')}
+                aria-pressed={activeFilter === 'article'}
                 className={`px-3 py-1 text-xs font-bold uppercase transition-all rounded-none cursor-pointer flex items-center gap-1.5 ${
-                  activeFilter === 'blog'
+                  activeFilter === 'article'
                     ? 'bg-neonMagenta text-black border-2 border-neonMagenta font-black'
                     : 'bg-black/50 text-slate-400 border border-white/10 hover:text-white'
                 }`}
               >
-                <span>📰 BLOG ESETTANULMÁNYOK ({blogResults.length})</span>
+                <span>📰 CIKKEK / ESETTANULMÁNYOK ({articleResults.length})</span>
               </button>
               <button
                 type="button"
@@ -186,31 +189,31 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
               <div className="py-12 text-center font-mono border border-white/5 bg-black/30 p-8">
                 <span className="material-symbols-outlined text-4xl text-slate-600 mb-2">manage_search</span>
                 <p className="text-sm text-slate-300 font-bold uppercase">Nincs közvetlen találat erre a kifejezésre</p>
-                <p className="text-xs text-slate-500 mt-1">Próbáld meg a részletes keresést a Tudástárban vagy a Blogban.</p>
+                <p className="text-xs text-slate-500 mt-1">Próbáld meg a részletes keresést a tudástári vagy cikk nézetben.</p>
               </div>
             ) : (
               filteredResults.map((item, idx) => {
-                const isBlog = item.type === 'blog' || item.content_type === 'blog';
+                const isArticle = presentationProfileOf(item) === 'article';
                 const scorePct = item.relevanceScore || Math.min(99, Math.round((item.score || 0.85) * 100));
 
                 return (
                   <Link
                     key={item.id || item.slug || idx}
-                    to={(isBlog ? '/blog/' : '/knowledge/') + item.slug}
+                    to={(isArticle ? '/blog/' : '/knowledge/') + item.slug}
                     className="block p-4 bg-black/60 border border-white/10 hover:border-neonCyan transition-all group relative cursor-pointer"
                     onClick={onClose}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                     <div className="flex flex-wrap items-center gap-2">
                         <span className={`text-[10px] font-mono font-bold px-2 py-0.5 ${
-                          isBlog 
+                          isArticle
                             ? 'bg-neonMagenta/20 text-neonMagenta border border-neonMagenta/40' 
                             : 'bg-plasmaGreen/20 text-plasmaGreen border border-plasmaGreen/40'
                         }`}>
-                          {isBlog ? '📰 BLOG ESETTANULMÁNY' : '📚 TUDÁSTÁR DOKUMENTUM'}
+                          {isArticle ? '📰 CIKK / ESETTANULMÁNY' : '📚 TUDÁSTÁR DOKUMENTUM'}
                         </span>
                         <span className="text-[10px] font-mono text-slate-400">
-                          [{item.category || (isBlog ? 'ESETTANULMÁNY' : 'TUDÁSTÁR')}]
+                          [{item.category || (isArticle ? 'ESETTANULMÁNY' : 'TUDÁSTÁR')}]
                         </span>
                       </div>
 
@@ -250,10 +253,10 @@ const RagEvidenceModal = ({ isOpen, onClose, topicTitle, searchQuery, initialBad
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
-                onClick={() => handleNavigateFullSearch('blog')}
+                onClick={() => handleNavigateFullSearch('article')}
                 className="flex-1 sm:flex-initial px-3 py-2 bg-black border border-neonMagenta text-neonMagenta hover:bg-neonMagenta hover:text-black font-bold uppercase transition-all text-center cursor-pointer"
               >
-                📰 BLOG KERESŐ MEGNYITÁSA
+                📰 CIKK KERESŐ MEGNYITÁSA
               </button>
               <button
                 type="button"
