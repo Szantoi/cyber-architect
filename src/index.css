@@ -879,6 +879,13 @@ body {
   background: rgba(148, 163, 184, 0.045);
 }
 
+.graph-application-bar__panel-launcher.is-active {
+  border-color: rgba(0, 251, 251, 0.62);
+  color: #d8ffff;
+  background: rgba(0, 251, 251, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 251, 251, 0.14), 0 0 0.72rem rgba(0, 251, 251, 0.12);
+}
+
 .graph-application-bar__panel-toggle:hover,
 .graph-application-bar__panel-toggle:focus-visible,
 .graph-application-bar__admin-toggle:hover,
@@ -1055,6 +1062,252 @@ body {
   display: none;
 }
 
+.graph-cad-ribbon.is-minimized.is-compact-menu-open {
+  z-index: 34;
+  overflow: visible;
+}
+
+.graph-cad-ribbon__compact-menu {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + 1px);
+  left: var(--compact-menu-left, 0.38rem);
+  display: grid;
+  width: min(22rem, calc(100vw - 0.8rem));
+  max-height: min(27rem, calc(100vh - 4.5rem));
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--ribbon-accent, var(--neon-cyan)) 54%, #26384c);
+  border-top: 2px solid var(--ribbon-accent, var(--neon-cyan));
+  border-radius: 0 0 0.18rem 0.18rem;
+  color: #d9e7f2;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--ribbon-accent, var(--neon-cyan)) 12%, transparent), transparent 38%),
+    repeating-linear-gradient(90deg, rgba(129, 153, 178, 0.045) 0, rgba(129, 153, 178, 0.045) 1px, transparent 1px, transparent 1.65rem),
+    linear-gradient(180deg, rgba(12, 29, 45, 0.985), rgba(2, 10, 20, 0.99));
+  box-shadow: 0 1.15rem 2.6rem rgba(0, 0, 0, 0.54), 0 0 1.4rem color-mix(in srgb, var(--ribbon-accent, var(--neon-cyan)) 18%, transparent);
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  animation: graph-ribbon-compact-enter 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes graph-ribbon-compact-enter {
+  from { opacity: 0; transform: translateY(-0.36rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.graph-cad-ribbon__compact-heading {
+  display: flex;
+  min-height: 2.2rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  padding: 0.38rem 0.48rem 0.34rem 0.62rem;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ribbon-accent, var(--neon-cyan)) 10%, transparent), transparent 70%);
+}
+
+.graph-cad-ribbon__compact-heading > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--ribbon-accent, var(--neon-cyan));
+}
+
+.graph-cad-ribbon__compact-heading b {
+  color: #eef8ff;
+  font-size: 0.57rem;
+  letter-spacing: 0.14em;
+}
+
+.graph-cad-ribbon__compact-heading small {
+  color: #71869a;
+  font-size: 0.38rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.graph-cad-ribbon__compact-heading button {
+  display: inline-grid;
+  width: 1.56rem;
+  height: 1.56rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 0.1rem;
+  color: #90a7bb;
+  background: rgba(2, 9, 18, 0.55);
+  cursor: pointer;
+}
+
+.graph-cad-ribbon__compact-heading button:hover,
+.graph-cad-ribbon__compact-heading button:focus-visible {
+  border-color: var(--ribbon-accent, var(--neon-cyan));
+  color: var(--ribbon-accent, var(--neon-cyan));
+  background: color-mix(in srgb, var(--ribbon-accent, var(--neon-cyan)) 13%, transparent);
+  outline: 0;
+}
+
+.graph-cad-ribbon__compact-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.7rem, 1fr));
+  gap: 0.26rem;
+  padding: 0.48rem;
+}
+
+.graph-cad-ribbon__compact-group {
+  --cad-group-accent: var(--ribbon-accent, var(--neon-cyan));
+  position: relative;
+  display: grid;
+  min-height: 2.55rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.34rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--cad-group-accent) 31%, #30445a);
+  border-radius: 0.12rem;
+  padding: 0.42rem 0.42rem 0.4rem;
+  color: color-mix(in srgb, var(--cad-group-accent) 68%, #e5eef6);
+  background: linear-gradient(115deg, color-mix(in srgb, var(--cad-group-accent) 10%, transparent), rgba(2, 10, 20, 0.35));
+  font: 900 0.47rem/1.18 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.09em;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.graph-cad-ribbon__compact-group > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.36rem;
+}
+
+.graph-cad-ribbon__compact-group > span i {
+  width: 0.3rem;
+  height: 0.3rem;
+  flex: 0 0 auto;
+  background: var(--cad-group-accent);
+  box-shadow: 0 0 0.48rem var(--cad-group-accent);
+}
+
+.graph-cad-ribbon__compact-group em {
+  display: inline-grid;
+  min-width: 1rem;
+  height: 1rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--cad-group-accent) 40%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--cad-group-accent) 70%, #cbd5e1);
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 0.36rem;
+  font-style: normal;
+}
+
+.graph-cad-ribbon__compact-group > svg {
+  transition: transform 140ms ease;
+}
+
+.graph-cad-ribbon__compact-group:hover,
+.graph-cad-ribbon__compact-group:focus-visible,
+.graph-cad-ribbon__compact-group.is-active {
+  border-color: var(--cad-group-accent);
+  color: #f4fbff;
+  background: linear-gradient(115deg, color-mix(in srgb, var(--cad-group-accent) 19%, transparent), rgba(7, 21, 35, 0.72));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cad-group-accent) 20%, transparent), 0 0 0.7rem color-mix(in srgb, var(--cad-group-accent) 14%, transparent);
+  outline: 0;
+}
+
+.graph-cad-ribbon__compact-group.is-active > svg { transform: rotate(180deg); }
+
+.graph-cad-ribbon__compact-commands {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  padding: 0.44rem 0.48rem 0.54rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.graph-cad-ribbon__compact-command-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.45rem;
+  margin: 0 0 0.35rem;
+  color: var(--ribbon-accent, var(--neon-cyan));
+}
+
+.graph-cad-ribbon__compact-command-heading span {
+  font-size: 0.45rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.graph-cad-ribbon__compact-command-heading small {
+  color: #71869a;
+  font-size: 0.32rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: right;
+}
+
+.graph-cad-ribbon__compact-command-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.28rem;
+}
+
+.graph-cad-ribbon .graph-cad-ribbon__compact-command {
+  width: auto;
+  min-height: 3.22rem;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  grid-template-rows: 1fr;
+  align-items: center;
+  justify-items: start;
+  gap: 0.46rem;
+  border: 1px solid rgba(116, 142, 169, 0.2);
+  border-radius: 0.11rem;
+  padding: 0.46rem;
+  color: #c9d8e5;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.025), rgba(0, 0, 0, 0.18));
+  font-size: 0.42rem;
+  text-align: left;
+}
+
+.graph-cad-ribbon .graph-cad-ribbon__compact-command .cad-tool-button__icon {
+  min-height: 0;
+  font-size: 1rem;
+}
+
+.graph-cad-ribbon .graph-cad-ribbon__compact-command .cad-tool-button__label {
+  overflow: visible;
+  font-size: 0.43rem;
+  line-height: 1.15;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.graph-cad-ribbon .graph-cad-ribbon__compact-command kbd {
+  top: 0.28rem;
+  right: 0.33rem;
+  font-size: 0.29rem;
+}
+
+.graph-cad-ribbon .graph-cad-ribbon__compact-command[aria-pressed='true'] {
+  border-color: var(--ribbon-tool-accent, var(--ribbon-accent, var(--neon-cyan)));
+  color: #f3fdff;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--ribbon-tool-accent, var(--ribbon-accent, var(--neon-cyan))) 22%, transparent), rgba(1, 12, 22, 0.6));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ribbon-tool-accent, var(--ribbon-accent, var(--neon-cyan))) 28%, transparent), 0 0 0.9rem color-mix(in srgb, var(--ribbon-tool-accent, var(--ribbon-accent, var(--neon-cyan))) 16%, transparent);
+}
+
+.graph-cad-ribbon__compact-hint {
+  margin: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  padding: 0.6rem;
+  color: #698095;
+  font-size: 0.38rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-align: center;
+}
+
 .graph-cad-ribbon__identity,
 .graph-cad-ribbon__group,
 .graph-cad-ribbon__status {
@@ -1122,15 +1375,25 @@ body {
 }
 
 .graph-cad-ribbon__group[data-cad-group='MUNKATÉR'],
-.graph-cad-ribbon__group[data-cad-group='KAPCSOLATOK'] { --cad-group-accent: #00fbfb; }
+.graph-cad-ribbon__group[data-cad-group='KAPCSOLATOK'],
+.graph-cad-ribbon__compact-group[data-cad-group='MUNKATÉR'],
+.graph-cad-ribbon__compact-group[data-cad-group='KAPCSOLATOK'] { --cad-group-accent: #00fbfb; }
 .graph-cad-ribbon__group[data-cad-group='MEGJELENÍTÉS'],
-.graph-cad-ribbon__group[data-cad-group='KONTEXTUS'] { --cad-group-accent: #4bc8ff; }
+.graph-cad-ribbon__group[data-cad-group='KONTEXTUS'],
+.graph-cad-ribbon__compact-group[data-cad-group='MEGJELENÍTÉS'],
+.graph-cad-ribbon__compact-group[data-cad-group='KONTEXTUS'] { --cad-group-accent: #4bc8ff; }
 .graph-cad-ribbon__group[data-cad-group='KAMERA'],
-.graph-cad-ribbon__group[data-cad-group='PROFIL'] { --cad-group-accent: #b86dff; }
+.graph-cad-ribbon__group[data-cad-group='PROFIL'],
+.graph-cad-ribbon__compact-group[data-cad-group='KAMERA'],
+.graph-cad-ribbon__compact-group[data-cad-group='PROFIL'] { --cad-group-accent: #b86dff; }
 .graph-cad-ribbon__group[data-cad-group='SZERKESZTÉS'],
-.graph-cad-ribbon__group[data-cad-group='ADATBÁZIS'] { --cad-group-accent: #ff55d7; }
-.graph-cad-ribbon__group[data-cad-group='ELEMZÉS'] { --cad-group-accent: #80ff00; }
-.graph-cad-ribbon__group[data-cad-group='AI MUNKATÉR'] { --cad-group-accent: #ff9b3d; }
+.graph-cad-ribbon__group[data-cad-group='ADATBÁZIS'],
+.graph-cad-ribbon__compact-group[data-cad-group='SZERKESZTÉS'],
+.graph-cad-ribbon__compact-group[data-cad-group='ADATBÁZIS'] { --cad-group-accent: #ff55d7; }
+.graph-cad-ribbon__group[data-cad-group='ELEMZÉS'],
+.graph-cad-ribbon__compact-group[data-cad-group='ELEMZÉS'] { --cad-group-accent: #80ff00; }
+.graph-cad-ribbon__group[data-cad-group='AI MUNKATÉR'],
+.graph-cad-ribbon__compact-group[data-cad-group='AI MUNKATÉR'] { --cad-group-accent: #ff9b3d; }
 
 .graph-cad-ribbon__group-label {
   color: color-mix(in srgb, var(--cad-group-accent) 72%, #94a3b8);

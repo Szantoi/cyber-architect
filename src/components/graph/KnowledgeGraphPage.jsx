@@ -3,7 +3,7 @@ import { BookOpen, Check, ChevronDown, ChevronUp, FileText, FolderTree, Layers3,
 import { DockviewReact, themeDark } from 'dockview-react';
 import 'dockview-react/dist/styles/dockview.css';
 import { Link } from 'react-router-dom';
-import { createCadWorkspacePanelPreferencesKey } from '@szantoi/cad-cui-system';
+import { createCadWorkspacePanelPreferencesKey, resolveCadCompactWorkspaceRibbonGroups } from '@szantoi/cad-cui-system';
 import SharedKnowledgeMeshExplorer from './SharedKnowledgeMeshExplorer.jsx';
 import GraphLayerOverlay from './GraphLayerOverlay.jsx';
 import GraphInlineEditor from './GraphInlineEditor.jsx';
@@ -604,10 +604,36 @@ function GraphWorkspaceTab({ api, containerApi, params = {} }) {
   );
 }
 
-function GraphCadRibbon({ activeLayerCount, isAdminPreview, isWorkspaceFullscreen, onOpenPanel, onOpenSearch, onResetLayout, onToggleRibbonMinimized, onWorkspaceFullscreenToggle, ribbonPreferences }) {
+function GraphCadRibbon({ activeLayerCount, isAdminPreview, isWorkspaceFullscreen, onResetLayout, onTogglePanel, onToggleRibbonMinimized, onWorkspaceFullscreenToggle, openPanelIds = EMPTY_LIST, ribbonPreferences }) {
+  const ribbonRef = useRef(null);
   const [activeRibbonTab, setActiveRibbonTab] = useState('view');
+  const [compactMenuTabId, setCompactMenuTabId] = useState('');
+  const [compactGroupId, setCompactGroupId] = useState('');
+  const [compactMenuLeft, setCompactMenuLeft] = useState(6);
   const accentMode = RIBBON_ACCENT_MODES.find(mode => mode.id === ribbonPreferences.accentMode) || RIBBON_ACCENT_MODES[0];
   const accentFor = tab => accentMode.id === 'spectrum' ? tab.color : accentMode.color;
+  const closeCompactMenu = useCallback(() => {
+    setCompactMenuTabId('');
+    setCompactGroupId('');
+  }, []);
+  useEffect(() => {
+    if (!ribbonPreferences.minimized) closeCompactMenu();
+  }, [closeCompactMenu, ribbonPreferences.minimized]);
+  useEffect(() => {
+    if (!ribbonPreferences.minimized || !compactMenuTabId || typeof document === 'undefined') return undefined;
+    const dismissWhenOutside = event => {
+      if (!ribbonRef.current?.contains(event.target)) closeCompactMenu();
+    };
+    const dismissOnEscape = event => {
+      if (event.key === 'Escape') closeCompactMenu();
+    };
+    document.addEventListener('pointerdown', dismissWhenOutside);
+    document.addEventListener('keydown', dismissOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissWhenOutside);
+      document.removeEventListener('keydown', dismissOnEscape);
+    };
+  }, [closeCompactMenu, compactMenuTabId, ribbonPreferences.minimized]);
   const hiddenCommandIds = useMemo(() => GRAPH_CUI_SYSTEM.commands
     .filter(command => ribbonPreferences.hiddenToolIds.includes(command.toolId))
     .map(command => command.id), [ribbonPreferences.hiddenToolIds]);
@@ -633,18 +659,15 @@ function GraphCadRibbon({ activeLayerCount, isAdminPreview, isWorkspaceFullscree
     maximize: Maximize2,
     refresh: RefreshCw
   };
+  const panelIdForCommand = command => command.intent?.type === 'panel.open' ? text(command.intent.panelId) : '';
+  const isPanelCommandOpen = command => {
+    const panelId = panelIdForCommand(command);
+    return Boolean(panelId && openPanelIds.includes(panelId));
+  };
   const commandCallback = command => {
+    const panelId = panelIdForCommand(command);
+    if (panelId) return () => onTogglePanel(panelId);
     switch (command.id) {
-      case 'workspace.panels': return () => onOpenPanel(WORKSPACE_MANAGER_PANEL_ID);
-      case 'workspace.search': return onOpenSearch;
-      case 'workspace.explorer': return () => onOpenPanel('graph-explorer-panel');
-      case 'workspace.ribbon-settings': return () => onOpenPanel('graph-ribbon-panel');
-      case 'view.layers': return () => onOpenPanel('graph-layers-panel');
-      case 'view.xyflow': return () => onOpenPanel('graph-flow-panel');
-      case 'view.inspector': return () => onOpenPanel('graph-properties-panel');
-      case 'analysis.traversal': return () => onOpenPanel('graph-traversal-panel');
-      case 'editor.open':
-      case 'editor.connect': return () => onOpenPanel('graph-admin-panel');
       case 'workspace.toggle-fullscreen': return onWorkspaceFullscreenToggle;
       case 'workspace.reset-layout': return onResetLayout;
       default: return () => {};
@@ -652,53 +675,95 @@ function GraphCadRibbon({ activeLayerCount, isAdminPreview, isWorkspaceFullscree
   };
   const commandLabel = command => command.id === 'workspace.toggle-fullscreen' && isWorkspaceFullscreen ? 'KILÉPÉS' : command.label;
   const commandAriaLabel = command => {
-    if (command.id === 'workspace.panels') return 'Munkatér panelkezelő megnyitása';
-    if (command.id === 'workspace.search') return 'RAG kereső megnyitása';
-    if (command.id === 'workspace.ribbon-settings') return 'Ribbon személyre szabása';
+    const panelIsOpen = isPanelCommandOpen(command);
+    if (command.id === 'workspace.panels') return panelIsOpen ? 'Munkatér panelkezelő bezárása' : 'Munkatér panelkezelő megnyitása';
+    if (command.id === 'workspace.search') return panelIsOpen ? 'RAG kereső bezárása' : 'RAG kereső megnyitása';
+    if (command.id === 'workspace.ribbon-settings') return panelIsOpen ? 'Ribbon személyre szabásának bezárása' : 'Ribbon személyre szabása';
     if (command.id === 'workspace.toggle-fullscreen') return isWorkspaceFullscreen ? 'Teljes képernyős modelltér bezárása' : 'Teljes képernyős modelltér bekapcsolása';
     if (command.id === 'workspace.reset-layout') return 'Modelltér alaphelyzet visszaállítása';
-    return `${commandLabel(command)} panel megnyitása`;
+    return `${commandLabel(command)} panel ${panelIsOpen ? 'bezárása' : 'megnyitása'}`;
   };
   const activeTab = RIBBON_TABS.find(tab => tab.id === activeRibbonTab) || RIBBON_TABS[0];
   const activeAccent = accentFor(activeTab);
-  const commandGroups = useMemo(() => visibleCommands.reduce((groups, command) => {
-    const label = command.placement.group || 'PARANCSOK';
-    const previous = groups.at(-1);
-    if (!previous || previous.label !== label) groups.push({ id: `${activeRibbonTab}-${label.toLowerCase().replace(/[^a-z0-9]+/gi, '-')}`, label, commands: [] });
-    groups.at(-1).commands.push(command);
-    return groups;
-  }, []), [activeRibbonTab, visibleCommands]);
+  const commandGroups = useMemo(() => resolveCadCompactWorkspaceRibbonGroups({
+    commands: visibleCommands,
+    tabId: activeRibbonTab,
+    defaultGroupId: 'commands',
+    defaultGroupLabel: 'PARANCSOK'
+  }).map(group => ({ ...group, id: `${activeRibbonTab}-${group.id}` })), [activeRibbonTab, visibleCommands]);
+  const compactMenuOpen = ribbonPreferences.minimized && compactMenuTabId === activeRibbonTab;
+  const activeCompactGroup = commandGroups.find(group => group.id === compactGroupId) || null;
+  useEffect(() => {
+    if (compactGroupId && !commandGroups.some(group => group.id === compactGroupId)) setCompactGroupId('');
+  }, [commandGroups, compactGroupId]);
+  const handleRibbonTabClick = (tab, event) => {
+    setActiveRibbonTab(tab.id);
+    if (!ribbonPreferences.minimized) return;
+    if (compactMenuTabId === tab.id) {
+      closeCompactMenu();
+      return;
+    }
+    const ribbonBounds = ribbonRef.current?.getBoundingClientRect();
+    const tabBounds = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 352;
+    const maximumLeft = Math.max(6, (ribbonBounds?.width || menuWidth) - menuWidth - 6);
+    const tabLeft = Math.max(6, tabBounds.left - (ribbonBounds?.left || 0));
+    setCompactMenuLeft(Math.min(tabLeft, maximumLeft));
+    setCompactMenuTabId(tab.id);
+    setCompactGroupId('');
+  };
+  const renderCommandTool = (command, surface = 'ribbon') => {
+    const Icon = command.id === 'workspace.toggle-fullscreen' && isWorkspaceFullscreen ? Minimize2 : (commandIcons[command.icon] || Network);
+    const label = commandLabel(command);
+    const badge = command.id === 'view.layers' ? activeLayerCount : undefined;
+    const panelId = panelIdForCommand(command);
+    const active = panelId ? isPanelCommandOpen(command) : command.id === 'workspace.toggle-fullscreen' && isWorkspaceFullscreen;
+    return <CadToolButton
+      key={`${surface}-${activeRibbonTab}-${command.id}-${label}`}
+      icon={Icon}
+      label={label}
+      shortcut={command.shortcut}
+      tone={command.tone}
+      badge={badge === undefined ? undefined : String(badge)}
+      toggle={Boolean(panelId) || command.id === 'workspace.toggle-fullscreen'}
+      active={active}
+      data-ribbon-tool={command.toolId || command.id}
+      data-command-id={command.id}
+      data-testid={command.id === 'workspace.toggle-fullscreen' ? `graph-fullscreen-toggle${surface === 'compact' ? '-compact' : ''}` : undefined}
+      onClick={commandCallback(command)}
+      className={`graph-cad-ribbon__tool${surface === 'compact' ? ' graph-cad-ribbon__compact-command' : ''}`}
+      aria-label={commandAriaLabel(command)}
+      title={command.detail || commandAriaLabel(command)}
+    />;
+  };
   return (
-    <header className={`graph-cad-ribbon${ribbonPreferences.minimized ? ' is-minimized' : ''}`} data-testid="graph-cad-ribbon" data-accent-mode={accentMode.id} data-minimized={ribbonPreferences.minimized ? 'true' : 'false'}>
+    <header ref={ribbonRef} className={`graph-cad-ribbon${ribbonPreferences.minimized ? ' is-minimized' : ''}${compactMenuOpen ? ' is-compact-menu-open' : ''}`} data-testid="graph-cad-ribbon" data-accent-mode={accentMode.id} data-minimized={ribbonPreferences.minimized ? 'true' : 'false'} data-compact-menu-open={compactMenuOpen ? 'true' : 'false'}>
       <div className="graph-cad-ribbon__tabbar">
-        <div className="graph-cad-ribbon__tabs" role="tablist" aria-label="Modelltér menü">{RIBBON_TABS.map(tab => <button key={tab.id} id={`graph-ribbon-tab-button-${tab.id}`} type="button" role="tab" aria-selected={tab.id === activeRibbonTab} aria-controls={`graph-ribbon-commands-${tab.id}`} data-testid={`graph-ribbon-tab-${tab.id}`} data-tone={tab.id} style={{ '--ribbon-accent': accentFor(tab) }} className={tab.id === activeRibbonTab ? 'is-active' : ''} onClick={() => setActiveRibbonTab(tab.id)}>{tab.id === 'view' && <Network size={10} aria-hidden="true" />}{tab.label}</button>)}</div>
+        <div className="graph-cad-ribbon__tabs" role="tablist" aria-label="Modelltér menü">{RIBBON_TABS.map(tab => <button key={tab.id} id={`graph-ribbon-tab-button-${tab.id}`} type="button" role="tab" aria-selected={tab.id === activeRibbonTab} aria-controls={ribbonPreferences.minimized ? 'graph-ribbon-compact-menu' : `graph-ribbon-commands-${tab.id}`} aria-expanded={ribbonPreferences.minimized ? compactMenuTabId === tab.id : undefined} data-testid={`graph-ribbon-tab-${tab.id}`} data-tone={tab.id} style={{ '--ribbon-accent': accentFor(tab) }} className={tab.id === activeRibbonTab ? 'is-active' : ''} onClick={event => handleRibbonTabClick(tab, event)}>{tab.id === 'view' && <Network size={10} aria-hidden="true" />}{tab.label}</button>)}</div>
         <button type="button" className="graph-cad-ribbon__minimize" aria-label={ribbonPreferences.minimized ? 'Szalag kibontása' : 'Szalag összecsukása'} aria-expanded={!ribbonPreferences.minimized} title={ribbonPreferences.minimized ? 'Szalag kibontása' : 'Szalag összecsukása'} onClick={onToggleRibbonMinimized}>{ribbonPreferences.minimized ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronUp size={12} aria-hidden="true" />}<span>{ribbonPreferences.minimized ? 'KIBONT' : 'TÖMÖR'}</span></button>
       </div>
+      {compactMenuOpen && <section id="graph-ribbon-compact-menu" data-testid="graph-ribbon-compact-menu" className="graph-cad-ribbon__compact-menu" role="dialog" aria-label={`${activeTab.label} tömör parancsmenü`} style={{ '--ribbon-accent': activeAccent, '--compact-menu-left': `${compactMenuLeft}px` }}>
+        <div className="graph-cad-ribbon__compact-heading">
+          <span><Network size={13} aria-hidden="true" /><b>{activeTab.label}</b><small>TÖMÖR MENÜ</small></span>
+          <button type="button" onClick={closeCompactMenu} aria-label={`${activeTab.label} tömör menü bezárása`} title="Menü bezárása"><X size={13} aria-hidden="true" /></button>
+        </div>
+        <div className="graph-cad-ribbon__compact-groups" aria-label={`${activeTab.label} parancscsoportjai`}>
+          {commandGroups.map(group => {
+            const expanded = group.id === compactGroupId;
+            return <button key={group.id} type="button" data-testid={`graph-ribbon-compact-group-${group.id}`} data-cad-group={group.label} className={`graph-cad-ribbon__compact-group${expanded ? ' is-active' : ''}`} aria-expanded={expanded} aria-controls={`graph-ribbon-compact-commands-${group.id}`} onClick={() => setCompactGroupId(current => current === group.id ? '' : group.id)}>
+              <span><i aria-hidden="true" />{group.label}</span><em>{formatNumber(group.commands.length)}</em><ChevronDown size={12} aria-hidden="true" />
+            </button>;
+          })}
+        </div>
+        {activeCompactGroup ? <section id={`graph-ribbon-compact-commands-${activeCompactGroup.id}`} data-testid="graph-ribbon-compact-commands" className="graph-cad-ribbon__compact-commands" aria-label={`${activeCompactGroup.label} parancsai`}>
+          <div className="graph-cad-ribbon__compact-command-heading"><span>{activeCompactGroup.label}</span><small>{formatNumber(activeCompactGroup.commands.length)} PARANCS · KATTINTÁS = KI / BE</small></div>
+          <div className="graph-cad-ribbon__compact-command-grid">{activeCompactGroup.commands.map(command => renderCommandTool(command, 'compact'))}</div>
+        </section> : <p className="graph-cad-ribbon__compact-hint">VÁLASSZ PARANCSCSOPORTOT</p>}
+      </section>}
       <div id={`graph-ribbon-commands-${activeTab.id}`} role="tabpanel" aria-labelledby={`graph-ribbon-tab-button-${activeTab.id}`} tabIndex={0} className="graph-cad-ribbon__commands" style={{ '--ribbon-accent': activeAccent }}>
         <div className="graph-cad-ribbon__identity"><Network size={15} aria-hidden="true" /><strong>GRÁF</strong></div>
         <div className="graph-cad-ribbon__groups">{commandGroups.map((group, groupIndex) => <section key={group.id} className="graph-cad-ribbon__group" data-cad-group={group.label} data-primary={groupIndex === 0 ? 'true' : 'false'} aria-label={`${group.label} parancscsoport`}>
-          <div className="graph-cad-ribbon__group-tools">{group.commands.map(command => {
-            const Icon = command.id === 'workspace.toggle-fullscreen' && isWorkspaceFullscreen ? Minimize2 : (commandIcons[command.icon] || Network);
-            const label = commandLabel(command);
-            const badge = command.id === 'view.layers' ? activeLayerCount : undefined;
-            return <CadToolButton
-              key={`${activeRibbonTab}-${command.id}-${label}`}
-              icon={Icon}
-              label={label}
-              shortcut={command.shortcut}
-              tone={command.tone}
-              badge={badge === undefined ? undefined : String(badge)}
-              toggle={command.id === 'workspace.toggle-fullscreen'}
-              active={command.id === 'workspace.toggle-fullscreen' && isWorkspaceFullscreen}
-              data-ribbon-tool={command.toolId || command.id}
-              data-command-id={command.id}
-              data-testid={command.id === 'workspace.toggle-fullscreen' ? 'graph-fullscreen-toggle' : undefined}
-              onClick={commandCallback(command)}
-              className="graph-cad-ribbon__tool"
-              aria-label={commandAriaLabel(command)}
-              title={command.detail || commandAriaLabel(command)}
-            />;
-          })}</div>
+          <div className="graph-cad-ribbon__group-tools">{group.commands.map(command => renderCommandTool(command))}</div>
           <span className="graph-cad-ribbon__group-label">{group.label}</span>
         </section>)}</div>
         <div className="graph-cad-ribbon__status" aria-label="Munkatér állapot"><span className="graph-cad-ribbon__status-primary"><i aria-hidden="true" /><b>{formatNumber(activeLayerCount)}</b> DB-RÉTEG</span><span className="graph-cad-ribbon__status-context">{activeTab.label}</span><small>SZÍNPROFIL: {accentMode.label} · PANELEK: DOKK / LEBEG / MAX · BAL KLIKK: KÖRNYEZETI PARANCSOK</small></div>
@@ -743,7 +808,7 @@ function GraphWorkspacePanelMenu() {
   );
 }
 
-function GraphApplicationBar({ canPreview, isAdminPreview, onTogglePreview, onOpenPanels }) {
+function GraphApplicationBar({ canPreview, isAdminPreview, isWorkspaceManagerOpen, onTogglePreview, onOpenPanels }) {
   const isAdminActive = Boolean(canPreview && isAdminPreview);
   return (
     <header className="graph-application-bar" data-testid="graph-app-bar" data-admin-active={isAdminActive ? 'true' : 'false'} aria-label="Gráf alkalmazássáv">
@@ -755,7 +820,7 @@ function GraphApplicationBar({ canPreview, isAdminPreview, onTogglePreview, onOp
       <div className="graph-application-bar__context" aria-hidden="true"><span />TUDÁSGRÁF <i>//</i> MODELTÉR</div>
       <div className="graph-application-bar__controls">
         <GraphWorkspacePanelMenu />
-        <button type="button" data-testid="workspace-panel-launcher" aria-label="Munkatér panelkezelő megnyitása" title="Haladó panelek és elrendezések" onClick={onOpenPanels} className="graph-application-bar__panel-toggle graph-application-bar__panel-launcher"><MoreHorizontal size={13} aria-hidden="true" /><span>HALADÓ</span></button>
+        <button type="button" data-testid="workspace-panel-launcher" aria-label={isWorkspaceManagerOpen ? 'Munkatér panelkezelő bezárása' : 'Munkatér panelkezelő megnyitása'} aria-pressed={isWorkspaceManagerOpen} title={isWorkspaceManagerOpen ? 'Haladó panelek bezárása' : 'Haladó panelek és elrendezések'} onClick={onOpenPanels} className={`graph-application-bar__panel-toggle graph-application-bar__panel-launcher${isWorkspaceManagerOpen ? ' is-active' : ''}`}><MoreHorizontal size={13} aria-hidden="true" /><span>HALADÓ</span></button>
         {canPreview && <button type="button" data-testid="admin-view-toggle" aria-pressed={isAdminActive} aria-label={isAdminActive ? 'Publikus nézetre váltás' : 'Admin nézetre váltás'} title={isAdminActive ? 'Publikus nézetre váltás' : 'Admin nézetre váltás'} onClick={onTogglePreview} className="graph-application-bar__admin-toggle">
           <ShieldCheck size={13} aria-hidden="true" />
           <span>{isAdminActive ? 'ADMIN AKTÍV' : 'PUBLIKUS'}</span>
@@ -1229,6 +1294,11 @@ const KnowledgeGraphPage = () => {
     return true;
   }, [isAdminPreview, patchWorkspacePanelPreference, syncWorkspaceState]);
 
+  const toggleWorkspacePanel = useCallback((panelId, placement) => {
+    const panel = workspaceApiRef.current?.getPanel(panelId);
+    return panel ? closeWorkspacePanel(panelId) : openWorkspacePanel(panelId, placement);
+  }, [closeWorkspacePanel, openWorkspacePanel]);
+
   const commitWorkspaceLayouts = useCallback(nextLayouts => {
     const normalized = normalizeWorkspaceLayouts(nextLayouts);
     workspaceLayoutsRef.current = normalized;
@@ -1409,6 +1479,9 @@ const KnowledgeGraphPage = () => {
       };
     }), [isAdminPreview, workspaceRevision]);
 
+  const openWorkspacePanelIds = Object.keys(WORKSPACE_PANELS)
+    .filter(panelId => Boolean(workspaceApiRef.current?.getPanel(panelId)));
+
   const workspacePanelDefinitions = useMemo(() => workspacePanelStates.map(panel => {
     const configuration = WORKSPACE_PANELS[panel.id] || {};
     return {
@@ -1490,6 +1563,7 @@ const KnowledgeGraphPage = () => {
     selectBaseDocument,
     dismissQuickAction,
     openWorkspacePanel,
+    toggleWorkspacePanel,
     placeWorkspacePanel,
     resetWorkspacePanel,
     closeWorkspacePanel,
@@ -1514,7 +1588,7 @@ const KnowledgeGraphPage = () => {
     chooseNode,
     chooseEdge,
     beginRelationship
-  }), [activeLayerIds, activeWorkspaceLayout, beginRelationship, cadContentPreferences, chooseEdge, chooseNode, closeWorkspacePanel, createWorkspaceLayout, dismissQuickAction, dockWorkspacePanelFromPreferences, documents, floatWorkspacePanelFromPreferences, graphs, hasSavedWorkspaceLayout, isAdminPreview, isWorkspaceFullscreen, loadDocuments, loadingCatalog, loadingDocuments, loadingLayerIds, openWorkspacePanel, openWorkspacePanelFromPreferences, persistWorkspacePanelPreferences, placeWorkspacePanel, preferenceScope, query, refreshGraphData, renderCanvasOverlay, renameWorkspaceLayout, resetCadContentPreferences, resetRibbonPreferences, resetWorkspaceLayout, resetWorkspacePanel, restoreWorkspaceLayout, ribbonPreferences, runTraversal, runningTraversal, saveWorkspaceLayout, selectedEdge, selectedGraph, selectedNode, selectedNodeId, selectedSnapshot, selectBaseDocument, setCadContentDensity, setCadContentDetail, setRibbonAccentMode, switchWorkspaceLayout, toggleLayer, toggleRibbonMinimized, toggleRibbonTool, toggleWorkspaceFullscreen, traversal, workspaceLayouts, workspacePanelDefinitions, workspacePanelPreferences, workspacePanelStates, workspaceSearchExpanded, workspaceSearchHost, workspaceSearchOpen]);
+  }), [activeLayerIds, activeWorkspaceLayout, beginRelationship, cadContentPreferences, chooseEdge, chooseNode, closeWorkspacePanel, createWorkspaceLayout, dismissQuickAction, dockWorkspacePanelFromPreferences, documents, floatWorkspacePanelFromPreferences, graphs, hasSavedWorkspaceLayout, isAdminPreview, isWorkspaceFullscreen, loadDocuments, loadingCatalog, loadingDocuments, loadingLayerIds, openWorkspacePanel, openWorkspacePanelFromPreferences, persistWorkspacePanelPreferences, placeWorkspacePanel, preferenceScope, query, refreshGraphData, renderCanvasOverlay, renameWorkspaceLayout, resetCadContentPreferences, resetRibbonPreferences, resetWorkspaceLayout, resetWorkspacePanel, restoreWorkspaceLayout, ribbonPreferences, runTraversal, runningTraversal, saveWorkspaceLayout, selectedEdge, selectedGraph, selectedNode, selectedNodeId, selectedSnapshot, selectBaseDocument, setCadContentDensity, setCadContentDetail, setRibbonAccentMode, switchWorkspaceLayout, toggleLayer, toggleRibbonMinimized, toggleRibbonTool, toggleWorkspaceFullscreen, toggleWorkspacePanel, traversal, workspaceLayouts, workspacePanelDefinitions, workspacePanelPreferences, workspacePanelStates, workspaceSearchExpanded, workspaceSearchHost, workspaceSearchOpen]);
 
   const workspaceComponents = useMemo(() => ({
     modelSpace: GraphModelSpacePanel,
@@ -1533,14 +1607,14 @@ const KnowledgeGraphPage = () => {
     <GraphWorkspaceContext.Provider value={workspaceValue}>
       <div className="graph-workspace-page w-full">
         <section ref={workspaceFrameRef} data-testid="graph-workspace-frame" data-cad-density={cadContentPreferences.density} data-cad-detail={cadContentPreferences.detail} className={`graph-workspace-frame${immersiveFullscreen ? ' is-immersive-fullscreen' : ''}`}>
-          <GraphApplicationBar canPreview={canPreview} isAdminPreview={isAdminPreview} onTogglePreview={isAdminPreview ? exitAdminPreview : enterAdminPreview} onOpenPanels={() => openWorkspacePanel(WORKSPACE_MANAGER_PANEL_ID)} />
-          <GraphCadRibbon activeLayerCount={activeLayerIds.length} isAdminPreview={isAdminPreview} isWorkspaceFullscreen={isWorkspaceFullscreen} onOpenPanel={openWorkspacePanel} onOpenSearch={() => openWorkspacePanel('graph-search-panel')} onResetLayout={resetWorkspaceLayout} onToggleRibbonMinimized={toggleRibbonMinimized} onWorkspaceFullscreenToggle={toggleWorkspaceFullscreen} ribbonPreferences={ribbonPreferences} />
+          <GraphApplicationBar canPreview={canPreview} isAdminPreview={isAdminPreview} isWorkspaceManagerOpen={openWorkspacePanelIds.includes(WORKSPACE_MANAGER_PANEL_ID)} onTogglePreview={isAdminPreview ? exitAdminPreview : enterAdminPreview} onOpenPanels={() => toggleWorkspacePanel(WORKSPACE_MANAGER_PANEL_ID)} />
+          <GraphCadRibbon activeLayerCount={activeLayerIds.length} isAdminPreview={isAdminPreview} isWorkspaceFullscreen={isWorkspaceFullscreen} onResetLayout={resetWorkspaceLayout} onTogglePanel={toggleWorkspacePanel} onToggleRibbonMinimized={toggleRibbonMinimized} onWorkspaceFullscreenToggle={toggleWorkspaceFullscreen} openPanelIds={openWorkspacePanelIds} ribbonPreferences={ribbonPreferences} />
           <GraphWorkspaceLayoutTabs />
           {error && <p role="alert" className="graph-workspace-alert">{error}</p>}
           <div id="graph-workspace-dock" className="graph-workspace-dock" data-testid="graph-workspace-dock">
             <DockviewReact className="graph-workspace-dock__surface" style={{ width: '100%', height: '100%' }} theme={themeDark} components={workspaceComponents} defaultTabComponent={GraphWorkspaceTab} floatingGroupBounds="boundedWithinViewport" floatingGroupDragHandle="titlebar" dndStrategy="pointer" onReady={onWorkspaceReady} />
           </div>
-          <GraphQuickActionMenu action={quickAction} isAdminPreview={isAdminPreview} onClose={dismissQuickAction} onOpenPanel={openWorkspacePanel} />
+          <GraphQuickActionMenu action={quickAction} isAdminPreview={isAdminPreview} onClose={dismissQuickAction} onOpenPanel={toggleWorkspacePanel} />
           {documentCandidates.length > 1 && <aside className="graph-workspace-candidate-picker" data-testid="graph-document-candidate-picker" aria-label="Több kapcsolt DB-csúcs"><header><span>DB KÖTÉSEK</span><button type="button" aria-label="DB-kötés választó bezárása" onClick={() => setDocumentCandidates(EMPTY_LIST)}><X size={13} /></button></header><p>Több adatbázis-csúcs kötődik ehhez a jegyzethez.</p><div>{documentCandidates.map(({ node, graph }) => <button key={`${graph.id}-${node.id}`} type="button" onClick={() => chooseNode(node, graph.id)} style={{ '--candidate-color': safeColor(graph.color) }}><span>{graph.name}</span><strong>{node.node_type} · {node.label}</strong></button>)}</div></aside>}
         </section>
       </div>

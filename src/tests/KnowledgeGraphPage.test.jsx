@@ -376,6 +376,35 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     expect(screen.getByRole('button', { name: 'RÉTEGEK panel megnyitása' })).toBeInTheDocument();
   });
 
+  it('uses a two-step compact ribbon menu and toggles its Dockview panels on repeated commands', async () => {
+    const fetchMock = mockGraphApi();
+    vi.stubGlobal('fetch', fetchMock);
+    renderGraph(<KnowledgeGraphPage />);
+
+    await screen.findByTestId('graph-canvas');
+    fireEvent.click(screen.getByRole('button', { name: 'Szalag összecsukása' }));
+    fireEvent.click(screen.getByTestId('graph-ribbon-tab-view'));
+
+    const compactMenu = await screen.findByTestId('graph-ribbon-compact-menu');
+    expect(within(compactMenu).getByRole('button', { name: /MUNKATÉR/i })).toBeInTheDocument();
+    expect(within(compactMenu).getByRole('button', { name: /MEGJELENÍTÉS/i })).toBeInTheDocument();
+    expect(within(compactMenu).getByRole('button', { name: /KAMERA/i })).toBeInTheDocument();
+    expect(within(compactMenu).queryByRole('button', { name: 'RÉTEGEK panel megnyitása' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(compactMenu).getByRole('button', { name: /MEGJELENÍTÉS/i }));
+    const layersCommand = within(compactMenu).getByRole('button', { name: 'RÉTEGEK panel megnyitása' });
+    fireEvent.click(layersCommand);
+    expect(await screen.findByText('OBSIDIAN WIKILINK ALAPRÉTEG')).toBeInTheDocument();
+    expect(within(compactMenu).getByRole('button', { name: 'RÉTEGEK panel bezárása' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(within(compactMenu).getByRole('button', { name: 'RÉTEGEK panel bezárása' }));
+    await waitFor(() => expect(screen.queryByText('OBSIDIAN WIKILINK ALAPRÉTEG')).not.toBeInTheDocument());
+    expect(within(compactMenu).getByRole('button', { name: 'RÉTEGEK panel megnyitása' })).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByTestId('graph-ribbon-tab-view'));
+    expect(screen.queryByTestId('graph-ribbon-compact-menu')).not.toBeInTheDocument();
+  });
+
   it('reveals the direct workbench only after a verified administrator session', async () => {
     localStorage.setItem('cyber_admin_token', 'verified-admin-token');
     localStorage.setItem('graph-cad:public:panels', JSON.stringify({
