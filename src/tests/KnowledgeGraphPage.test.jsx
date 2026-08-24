@@ -376,7 +376,7 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     expect(screen.getByRole('button', { name: 'RÉTEGEK panel megnyitása' })).toBeInTheDocument();
   });
 
-  it('uses a two-step compact ribbon menu and toggles its Dockview panels on repeated commands', async () => {
+  it('uses a two-step compact ribbon menu, closes after commands, and still toggles its Dockview panels', async () => {
     const fetchMock = mockGraphApi();
     vi.stubGlobal('fetch', fetchMock);
     renderGraph(<KnowledgeGraphPage />);
@@ -395,14 +395,24 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     const layersCommand = within(compactMenu).getByRole('button', { name: 'RÉTEGEK panel megnyitása' });
     fireEvent.click(layersCommand);
     expect(await screen.findByText('OBSIDIAN WIKILINK ALAPRÉTEG')).toBeInTheDocument();
-    expect(within(compactMenu).getByRole('button', { name: 'RÉTEGEK panel bezárása' })).toHaveAttribute('aria-pressed', 'true');
-
-    fireEvent.click(within(compactMenu).getByRole('button', { name: 'RÉTEGEK panel bezárása' }));
-    await waitFor(() => expect(screen.queryByText('OBSIDIAN WIKILINK ALAPRÉTEG')).not.toBeInTheDocument());
-    expect(within(compactMenu).getByRole('button', { name: 'RÉTEGEK panel megnyitása' })).toHaveAttribute('aria-pressed', 'false');
+    await waitFor(() => expect(screen.queryByTestId('graph-ribbon-compact-menu')).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId('graph-ribbon-tab-view'));
+    const reopenedCompactMenu = await screen.findByTestId('graph-ribbon-compact-menu');
+    fireEvent.click(within(reopenedCompactMenu).getByRole('button', { name: /MEGJELENÍTÉS/i }));
+    fireEvent.click(within(reopenedCompactMenu).getByRole('button', { name: 'RÉTEGEK panel bezárása' }));
+    await waitFor(() => expect(screen.queryByText('OBSIDIAN WIKILINK ALAPRÉTEG')).not.toBeInTheDocument());
     expect(screen.queryByTestId('graph-ribbon-compact-menu')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('graph-ribbon-tab-view'));
+    await screen.findByTestId('graph-ribbon-compact-menu');
+    fireEvent.pointerLeave(screen.getByTestId('graph-cad-ribbon'));
+    await waitFor(() => expect(screen.queryByTestId('graph-ribbon-compact-menu')).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('graph-ribbon-tab-view'));
+    await screen.findByTestId('graph-ribbon-compact-menu');
+    fireEvent.blur(screen.getByTestId('graph-cad-ribbon'), { relatedTarget: document.body });
+    await waitFor(() => expect(screen.queryByTestId('graph-ribbon-compact-menu')).not.toBeInTheDocument());
   });
 
   it('reveals the direct workbench only after a verified administrator session', async () => {

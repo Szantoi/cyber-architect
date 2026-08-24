@@ -712,6 +712,18 @@ function GraphCadRibbon({ activeLayerCount, isAdminPreview, isWorkspaceFullscree
     setCompactMenuTabId(tab.id);
     setCompactGroupId('');
   };
+  const dismissCompactMenuOnBlur = event => {
+    if (!compactMenuOpen || ribbonRef.current?.contains(event.relatedTarget)) return;
+    closeCompactMenu();
+  };
+  const dismissCompactMenuOnPointerLeave = event => {
+    if (event.pointerType && event.pointerType !== 'mouse') return;
+    closeCompactMenu();
+  };
+  const executeRibbonCommand = (command, surface) => event => {
+    commandCallback(command)(event);
+    if (surface === 'compact' && !event.defaultPrevented) closeCompactMenu();
+  };
   const renderCommandTool = (command, surface = 'ribbon') => {
     const Icon = command.id === 'workspace.toggle-fullscreen' && isWorkspaceFullscreen ? Minimize2 : (commandIcons[command.icon] || Network);
     const label = commandLabel(command);
@@ -730,14 +742,14 @@ function GraphCadRibbon({ activeLayerCount, isAdminPreview, isWorkspaceFullscree
       data-ribbon-tool={command.toolId || command.id}
       data-command-id={command.id}
       data-testid={command.id === 'workspace.toggle-fullscreen' ? `graph-fullscreen-toggle${surface === 'compact' ? '-compact' : ''}` : undefined}
-      onClick={commandCallback(command)}
+      onClick={executeRibbonCommand(command, surface)}
       className={`graph-cad-ribbon__tool${surface === 'compact' ? ' graph-cad-ribbon__compact-command' : ''}`}
       aria-label={commandAriaLabel(command)}
       title={command.detail || commandAriaLabel(command)}
     />;
   };
   return (
-    <header ref={ribbonRef} className={`graph-cad-ribbon${ribbonPreferences.minimized ? ' is-minimized' : ''}${compactMenuOpen ? ' is-compact-menu-open' : ''}`} data-testid="graph-cad-ribbon" data-accent-mode={accentMode.id} data-minimized={ribbonPreferences.minimized ? 'true' : 'false'} data-compact-menu-open={compactMenuOpen ? 'true' : 'false'}>
+    <header ref={ribbonRef} className={`graph-cad-ribbon${ribbonPreferences.minimized ? ' is-minimized' : ''}${compactMenuOpen ? ' is-compact-menu-open' : ''}`} data-testid="graph-cad-ribbon" data-accent-mode={accentMode.id} data-minimized={ribbonPreferences.minimized ? 'true' : 'false'} data-compact-menu-open={compactMenuOpen ? 'true' : 'false'} onBlurCapture={dismissCompactMenuOnBlur} onPointerLeave={compactMenuOpen ? dismissCompactMenuOnPointerLeave : undefined}>
       <div className="graph-cad-ribbon__tabbar">
         <div className="graph-cad-ribbon__tabs" role="tablist" aria-label="Modelltér menü">{RIBBON_TABS.map(tab => <button key={tab.id} id={`graph-ribbon-tab-button-${tab.id}`} type="button" role="tab" aria-selected={tab.id === activeRibbonTab} aria-controls={ribbonPreferences.minimized ? 'graph-ribbon-compact-menu' : `graph-ribbon-commands-${tab.id}`} aria-expanded={ribbonPreferences.minimized ? compactMenuTabId === tab.id : undefined} data-testid={`graph-ribbon-tab-${tab.id}`} data-tone={tab.id} style={{ '--ribbon-accent': accentFor(tab) }} className={tab.id === activeRibbonTab ? 'is-active' : ''} onClick={event => handleRibbonTabClick(tab, event)}>{tab.id === 'view' && <Network size={10} aria-hidden="true" />}{tab.label}</button>)}</div>
         <button type="button" className="graph-cad-ribbon__minimize" aria-label={ribbonPreferences.minimized ? 'Szalag kibontása' : 'Szalag összecsukása'} aria-expanded={!ribbonPreferences.minimized} title={ribbonPreferences.minimized ? 'Szalag kibontása' : 'Szalag összecsukása'} onClick={onToggleRibbonMinimized}>{ribbonPreferences.minimized ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronUp size={12} aria-hidden="true" />}<span>{ribbonPreferences.minimized ? 'KIBONT' : 'TÖMÖR'}</span></button>
@@ -756,7 +768,7 @@ function GraphCadRibbon({ activeLayerCount, isAdminPreview, isWorkspaceFullscree
           })}
         </div>
         {activeCompactGroup ? <section id={`graph-ribbon-compact-commands-${activeCompactGroup.id}`} data-testid="graph-ribbon-compact-commands" className="graph-cad-ribbon__compact-commands" aria-label={`${activeCompactGroup.label} parancsai`}>
-          <div className="graph-cad-ribbon__compact-command-heading"><span>{activeCompactGroup.label}</span><small>{formatNumber(activeCompactGroup.commands.length)} PARANCS · KATTINTÁS = KI / BE</small></div>
+          <div className="graph-cad-ribbon__compact-command-heading"><span>{activeCompactGroup.label}</span><small>{formatNumber(activeCompactGroup.commands.length)} PARANCS · UTÁNA BEZÁR</small></div>
           <div className="graph-cad-ribbon__compact-command-grid">{activeCompactGroup.commands.map(command => renderCommandTool(command, 'compact'))}</div>
         </section> : <p className="graph-cad-ribbon__compact-hint">VÁLASSZ PARANCSCSOPORTOT</p>}
       </section>}
