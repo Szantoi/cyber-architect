@@ -23,6 +23,14 @@ const WORKSPACE_LAYOUT_PREFERENCE_KEY = 'graph-workspace-layout:v2';
 const WORKSPACE_LAYOUTS_PREFERENCE_KEY = 'graph-workspace-layouts:v1';
 const DEFAULT_WORKSPACE_LAYOUT_ID = 'model';
 const WORKSPACE_PREFERENCE_NAMESPACE = 'graph-cad';
+const RIBBON_TAB_ICONS = Object.freeze({
+  view: Layers3,
+  tools: Network,
+  edit: Move,
+  ai: Network,
+  integrations: Link2,
+  file: PanelsTopLeft
+});
 const WORKSPACE_PANELS = Object.freeze({
   [MODEL_PANEL_ID]: { component: 'modelSpace', title: 'MODELTÉR', locked: true, width: 960, height: 680, defaultPlacement: 'root', icon: Network, accent: '#00fbfb' },
   [WORKSPACE_MANAGER_PANEL_ID]: { component: 'workspaceManager', title: 'PANELEK', width: 486, height: 610, defaultPlacement: 'floating', icon: PanelsTopLeft, accent: '#00fbfb', utility: true },
@@ -751,26 +759,32 @@ function GraphCadRibbon({ activeLayerCount, isAdminPreview, isWorkspaceFullscree
   return (
     <header ref={ribbonRef} className={`graph-cad-ribbon${ribbonPreferences.minimized ? ' is-minimized' : ''}${compactMenuOpen ? ' is-compact-menu-open' : ''}`} data-testid="graph-cad-ribbon" data-accent-mode={accentMode.id} data-minimized={ribbonPreferences.minimized ? 'true' : 'false'} data-compact-menu-open={compactMenuOpen ? 'true' : 'false'} onBlurCapture={dismissCompactMenuOnBlur} onPointerLeave={compactMenuOpen ? dismissCompactMenuOnPointerLeave : undefined}>
       <div className="graph-cad-ribbon__tabbar">
-        <div className="graph-cad-ribbon__tabs" role="tablist" aria-label="Modelltér menü">{RIBBON_TABS.map(tab => <button key={tab.id} id={`graph-ribbon-tab-button-${tab.id}`} type="button" role="tab" aria-selected={tab.id === activeRibbonTab} aria-controls={ribbonPreferences.minimized ? 'graph-ribbon-compact-menu' : `graph-ribbon-commands-${tab.id}`} aria-expanded={ribbonPreferences.minimized ? compactMenuTabId === tab.id : undefined} data-testid={`graph-ribbon-tab-${tab.id}`} data-tone={tab.id} style={{ '--ribbon-accent': accentFor(tab) }} className={tab.id === activeRibbonTab ? 'is-active' : ''} onClick={event => handleRibbonTabClick(tab, event)}>{tab.id === 'view' && <Network size={10} aria-hidden="true" />}{tab.label}</button>)}</div>
+        <div className="graph-cad-ribbon__tabs" role="tablist" aria-label="Modelltér menü">{RIBBON_TABS.map(tab => {
+          const TabIcon = RIBBON_TAB_ICONS[tab.id];
+          return <button key={tab.id} id={`graph-ribbon-tab-button-${tab.id}`} type="button" role="tab" aria-selected={tab.id === activeRibbonTab} aria-controls={ribbonPreferences.minimized ? 'graph-ribbon-compact-menu' : `graph-ribbon-commands-${tab.id}`} aria-expanded={ribbonPreferences.minimized ? compactMenuTabId === tab.id : undefined} data-testid={`graph-ribbon-tab-${tab.id}`} data-tone={tab.id} style={{ '--ribbon-accent': accentFor(tab) }} className={tab.id === activeRibbonTab ? 'is-active' : ''} onClick={event => handleRibbonTabClick(tab, event)}>{TabIcon && <TabIcon size={10} aria-hidden="true" />}{tab.label}</button>;
+        })}</div>
         <button type="button" className="graph-cad-ribbon__minimize" aria-label={ribbonPreferences.minimized ? 'Szalag kibontása' : 'Szalag összecsukása'} aria-expanded={!ribbonPreferences.minimized} title={ribbonPreferences.minimized ? 'Szalag kibontása' : 'Szalag összecsukása'} onClick={onToggleRibbonMinimized}>{ribbonPreferences.minimized ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronUp size={12} aria-hidden="true" />}<span>{ribbonPreferences.minimized ? 'KIBONT' : 'TÖMÖR'}</span></button>
       </div>
       {compactMenuOpen && <section id="graph-ribbon-compact-menu" data-testid="graph-ribbon-compact-menu" className="graph-cad-ribbon__compact-menu" role="dialog" aria-label={`${activeTab.label} tömör parancsmenü`} style={{ '--ribbon-accent': activeAccent, '--compact-menu-left': `${compactMenuLeft}px` }}>
         <div className="graph-cad-ribbon__compact-heading">
-          <span><Network size={13} aria-hidden="true" /><b>{activeTab.label}</b><small>TÖMÖR MENÜ</small></span>
+          <span><Network size={13} aria-hidden="true" /><b>{activeTab.label}</b><small>1 / FŐ CSOPORT · TÖMÖR MENÜ</small></span>
           <button type="button" onClick={closeCompactMenu} aria-label={`${activeTab.label} tömör menü bezárása`} title="Menü bezárása"><X size={13} aria-hidden="true" /></button>
         </div>
-        <div className="graph-cad-ribbon__compact-groups" aria-label={`${activeTab.label} parancscsoportjai`}>
-          {commandGroups.map(group => {
-            const expanded = group.id === compactGroupId;
-            return <button key={group.id} type="button" data-testid={`graph-ribbon-compact-group-${group.id}`} data-cad-group={group.label} className={`graph-cad-ribbon__compact-group${expanded ? ' is-active' : ''}`} aria-expanded={expanded} aria-controls={`graph-ribbon-compact-commands-${group.id}`} onClick={() => setCompactGroupId(current => current === group.id ? '' : group.id)}>
-              <span><i aria-hidden="true" />{group.label}</span><em>{formatNumber(group.commands.length)}</em><ChevronDown size={12} aria-hidden="true" />
-            </button>;
-          })}
+        <div className="graph-cad-ribbon__compact-group-stage">
+          <p className="graph-cad-ribbon__compact-step">2 / FUNKCIÓCSOPORT</p>
+          <div className="graph-cad-ribbon__compact-groups" aria-label={`${activeTab.label} parancscsoportjai`}>
+            {commandGroups.map(group => {
+              const expanded = group.id === compactGroupId;
+              return <button key={group.id} type="button" data-testid={`graph-ribbon-compact-group-${group.id}`} data-cad-group={group.label} className={`graph-cad-ribbon__compact-group${expanded ? ' is-active' : ''}`} aria-expanded={expanded} aria-controls={`graph-ribbon-compact-commands-${group.id}`} onClick={() => setCompactGroupId(current => current === group.id ? '' : group.id)}>
+                <span><i aria-hidden="true" />{group.label}</span><em>{formatNumber(group.commands.length)}</em><ChevronDown size={12} aria-hidden="true" />
+              </button>;
+            })}
+          </div>
         </div>
         {activeCompactGroup ? <section id={`graph-ribbon-compact-commands-${activeCompactGroup.id}`} data-testid="graph-ribbon-compact-commands" className="graph-cad-ribbon__compact-commands" aria-label={`${activeCompactGroup.label} parancsai`}>
-          <div className="graph-cad-ribbon__compact-command-heading"><span>{activeCompactGroup.label}</span><small>{formatNumber(activeCompactGroup.commands.length)} PARANCS · UTÁNA BEZÁR</small></div>
+          <div className="graph-cad-ribbon__compact-command-heading"><span>{activeCompactGroup.label}</span><small>3 / PARANCSOK · {formatNumber(activeCompactGroup.commands.length)} · UTÁNA BEZÁR</small></div>
           <div className="graph-cad-ribbon__compact-command-grid">{activeCompactGroup.commands.map(command => renderCommandTool(command, 'compact'))}</div>
-        </section> : <p className="graph-cad-ribbon__compact-hint">VÁLASSZ PARANCSCSOPORTOT</p>}
+        </section> : <p className="graph-cad-ribbon__compact-hint">2 / VÁLASSZ FUNKCIÓCSOPORTOT</p>}
       </section>}
       <div id={`graph-ribbon-commands-${activeTab.id}`} role="tabpanel" aria-labelledby={`graph-ribbon-tab-button-${activeTab.id}`} tabIndex={0} className="graph-cad-ribbon__commands" style={{ '--ribbon-accent': activeAccent }}>
         <div className="graph-cad-ribbon__identity"><Network size={15} aria-hidden="true" /><strong>GRÁF</strong></div>
@@ -821,7 +835,11 @@ function GraphWorkspacePanelMenu() {
 }
 
 function GraphApplicationBar({ canPreview, isAdminPreview, isWorkspaceManagerOpen, onTogglePreview, onOpenPanels }) {
+  const workspace = useGraphWorkspace();
   const isAdminActive = Boolean(canPreview && isAdminPreview);
+  const layersPanel = workspace.workspacePanelStates.find(panel => panel.id === 'graph-layers-panel');
+  const isLayersPanelOpen = Boolean(layersPanel?.isOpen);
+  const activeLayerCount = workspace.activeLayerIds.length;
   return (
     <header className="graph-application-bar" data-testid="graph-app-bar" data-admin-active={isAdminActive ? 'true' : 'false'} aria-label="Gráf alkalmazássáv">
       <Link to="/" data-testid="graph-app-home" aria-label="SZÁNTOI GÁBOR // AI — vissza a főoldalra" className="graph-application-bar__brand">
@@ -831,6 +849,7 @@ function GraphApplicationBar({ canPreview, isAdminPreview, isWorkspaceManagerOpe
       </Link>
       <div className="graph-application-bar__context" aria-hidden="true"><span />TUDÁSGRÁF <i>//</i> MODELTÉR</div>
       <div className="graph-application-bar__controls">
+        <button type="button" data-testid="graph-layers-panel-toggle" aria-label={isLayersPanelOpen ? 'RÉTEGEK gyorspanel bezárása' : 'RÉTEGEK gyorspanel megnyitása'} aria-pressed={isLayersPanelOpen} title={isLayersPanelOpen ? 'RÉTEGEK gyorspanel bezárása' : 'RÉTEGEK gyorspanel megnyitása'} onClick={() => workspace.toggleWorkspacePanel('graph-layers-panel')} className={`graph-application-bar__panel-toggle graph-application-bar__layers-toggle${isLayersPanelOpen ? ' is-active' : ''}`}><Layers3 size={13} aria-hidden="true" /><output aria-label={`${activeLayerCount} aktív megjelenítési réteg`}>{formatNumber(activeLayerCount)}</output></button>
         <GraphWorkspacePanelMenu />
         <button type="button" data-testid="workspace-panel-launcher" aria-label={isWorkspaceManagerOpen ? 'Munkatér panelkezelő bezárása' : 'Munkatér panelkezelő megnyitása'} aria-pressed={isWorkspaceManagerOpen} title={isWorkspaceManagerOpen ? 'Haladó panelek bezárása' : 'Haladó panelek és elrendezések'} onClick={onOpenPanels} className={`graph-application-bar__panel-toggle graph-application-bar__panel-launcher${isWorkspaceManagerOpen ? ' is-active' : ''}`}><MoreHorizontal size={13} aria-hidden="true" /><span>HALADÓ</span></button>
         {canPreview && <button type="button" data-testid="admin-view-toggle" aria-pressed={isAdminActive} aria-label={isAdminActive ? 'Publikus nézetre váltás' : 'Admin nézetre váltás'} title={isAdminActive ? 'Publikus nézetre váltás' : 'Admin nézetre váltás'} onClick={onTogglePreview} className="graph-application-bar__admin-toggle">

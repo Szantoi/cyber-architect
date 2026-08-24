@@ -162,6 +162,7 @@ test('Obsidian wikilinks stay as the default graph and typed DB arcs overlay the
   expect(scrollState.scrollY).toBeLessThanOrEqual(1);
   await expect(page.getByTestId('graph-search-console')).toHaveCount(0);
   const canvasHeightBeforeSearch = (await page.getByTestId('graph-canvas').boundingBox())?.height;
+  await page.getByTestId('graph-ribbon-tab-file').click();
   await page.getByRole('button', { name: 'RAG kereső megnyitása' }).click();
   await expect(page.getByTestId('graph-workspace-search-popover')).toBeVisible();
   await expect(page.getByTestId('graph-search-console')).toBeVisible();
@@ -201,6 +202,7 @@ test('Obsidian wikilinks stay as the default graph and typed DB arcs overlay the
   await expect(page.getByText('OBSIDIAN WIKILINK ALAPRÉTEG')).toHaveCount(0);
   await expect(page.getByTestId(`graph-layer-overlay-${graph.id}`)).toHaveCount(0);
 
+  await page.getByTestId('graph-ribbon-tab-view').click();
   await page.getByRole('button', { name: 'RÉTEGEK panel megnyitása' }).click();
   await expect(page.getByText('OBSIDIAN WIKILINK ALAPRÉTEG')).toBeVisible();
   await page.getByTestId(`graph-layer-toggle-${graph.id}`).click();
@@ -218,6 +220,7 @@ test('Obsidian wikilinks stay as the default graph and typed DB arcs overlay the
   const properties = page.getByTestId('graph-workspace-properties');
   await expect(properties.getByTestId('graph-layer-inspector')).toContainText('relation_group_id: relation-e2e');
   await expect(properties.getByTestId('graph-layer-inspector')).toContainText('e2e');
+  await page.getByTestId('graph-ribbon-tab-tools').click();
   await page.getByRole('button', { name: 'ÚTVONALAK panel megnyitása' }).click();
   await page.getByLabel('Bejárás iránya').selectOption('both');
   await page.getByLabel('Bejárás mélysége').fill('3');
@@ -379,7 +382,8 @@ test('a verified admin can edit a selected directed DB edge from the graph view'
   await expect(page.getByTestId('graph-app-bar')).toHaveAttribute('data-admin-active', 'true');
   await page.getByRole('button', { name: 'RÉTEGEK panel megnyitása' }).click();
   await page.getByTestId(`graph-layer-toggle-${graph.id}`).click();
-  await page.getByRole('button', { name: 'SZERKESZTŐ panel megnyitása' }).click();
+  await page.getByTestId('graph-ribbon-tab-edit').click();
+  await page.getByRole('button', { name: /(?:ÚJ CSÚCS|SZERKESZTŐ) panel megnyitása/ }).click();
   await expect(page.getByTestId('graph-admin-workbench')).toBeVisible();
   await page.getByTestId(`graph-layer-edge-${edges[0].id}`).click({ force: true });
   await expect(page.getByTestId('graph-admin-edge-form')).toBeVisible();
@@ -413,7 +417,8 @@ test('a verified admin can draw a connection on the XYFlow canvas and save it th
   await expect(page.getByTestId('graph-app-bar')).toHaveAttribute('data-admin-active', 'true');
   await page.getByRole('button', { name: 'RÉTEGEK panel megnyitása' }).click();
   await page.getByTestId(`graph-layer-toggle-${graph.id}`).click();
-  await page.getByRole('button', { name: 'SZERKESZTŐ panel megnyitása' }).click();
+  await page.getByTestId('graph-ribbon-tab-edit').click();
+  await page.getByRole('button', { name: /(?:ÚJ CSÚCS|SZERKESZTŐ) panel megnyitása/ }).click();
   await expect(page.getByTestId('graph-admin-workbench')).toBeVisible();
   await page.getByTestId('graph-admin-workbench').getByRole('button', { name: 'VÁSZON' }).click();
   await expect(page.getByTestId('graph-admin-relation-canvas')).toBeVisible();

@@ -886,6 +886,38 @@ body {
   box-shadow: inset 0 0 0 1px rgba(0, 251, 251, 0.14), 0 0 0.72rem rgba(0, 251, 251, 0.12);
 }
 
+.graph-application-bar__layers-toggle {
+  position: relative;
+  min-width: 1.72rem;
+  justify-content: center;
+  padding-inline: 0.32rem;
+  color: #ff9de2;
+  border-color: rgba(255, 85, 215, 0.5);
+  background: rgba(255, 85, 215, 0.075);
+}
+
+.graph-application-bar__layers-toggle > output {
+  position: absolute;
+  top: -0.32rem;
+  right: -0.3rem;
+  display: grid;
+  min-width: 0.78rem;
+  height: 0.78rem;
+  place-items: center;
+  border: 1px solid rgba(255, 85, 215, 0.78);
+  color: #fff3fd;
+  background: #4d1642;
+  box-shadow: 0 0 0.46rem rgba(255, 85, 215, 0.24);
+  font: 900 0.34rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.graph-application-bar__layers-toggle.is-active {
+  color: #fff7fe;
+  border-color: #ff55d7;
+  background: rgba(255, 85, 215, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 85, 215, 0.2), 0 0 0.75rem rgba(255, 85, 215, 0.18);
+}
+
 .graph-application-bar__panel-toggle:hover,
 .graph-application-bar__panel-toggle:focus-visible,
 .graph-application-bar__admin-toggle:hover,
@@ -1147,11 +1179,23 @@ body {
   outline: 0;
 }
 
+.graph-cad-ribbon__compact-group-stage {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 0.38rem 0.48rem 0.48rem;
+}
+
+.graph-cad-ribbon__compact-step {
+  margin: 0 0 0.26rem;
+  color: #71869a;
+  font-size: 0.32rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
 .graph-cad-ribbon__compact-groups {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8.7rem, 1fr));
   gap: 0.26rem;
-  padding: 0.48rem;
 }
 
 .graph-cad-ribbon__compact-group {

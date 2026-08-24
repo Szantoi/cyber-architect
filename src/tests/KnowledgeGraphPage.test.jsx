@@ -102,6 +102,7 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     await screen.findByTestId(`graph-layer-overlay-${graph.id}`);
     fireEvent.click(screen.getByTestId('graph-node-31'));
     expect(screen.queryByTestId('graph-workspace-properties')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('graph-ribbon-tab-tools'));
     fireEvent.click(screen.getByRole('button', { name: 'ÚTVONALAK panel megnyitása' }));
     fireEvent.change(await screen.findByLabelText('Bejárás iránya'), { target: { value: 'both' } });
     fireEvent.change(screen.getByLabelText('Bejárás mélysége'), { target: { value: '3' } });
@@ -180,6 +181,25 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     fireEvent.click(within(menu).getByRole('button', { name: 'Hide EXPLORER' }));
     await waitFor(() => expect(screen.queryByTestId('graph-document-explorer')).not.toBeInTheDocument());
     expect(JSON.parse(localStorage.getItem('graph-cad:public:panels'))['graph-explorer-panel']).toMatchObject({ open: false, placement: 'float' });
+  });
+
+  it('keeps frequently used display layers one click away from the persistent application bar', async () => {
+    const fetchMock = mockGraphApi();
+    vi.stubGlobal('fetch', fetchMock);
+    renderGraph(<KnowledgeGraphPage />);
+
+    await screen.findByTestId('graph-canvas');
+    const layerLauncher = screen.getByTestId('graph-layers-panel-toggle');
+    expect(layerLauncher).toHaveAttribute('aria-pressed', 'false');
+    expect(layerLauncher).toHaveAccessibleName('RÉTEGEK gyorspanel megnyitása');
+
+    fireEvent.click(layerLauncher);
+    expect(await screen.findByText('OBSIDIAN WIKILINK ALAPRÉTEG')).toBeInTheDocument();
+    expect(layerLauncher).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(layerLauncher);
+    await waitFor(() => expect(screen.queryByText('OBSIDIAN WIKILINK ALAPRÉTEG')).not.toBeInTheDocument());
+    expect(layerLauncher).toHaveAccessibleName('RÉTEGEK gyorspanel megnyitása');
   });
 
   it('creates and switches independently persisted workspace profiles from the layout tab bar', async () => {
@@ -292,6 +312,7 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
 
     await screen.findByTestId('graph-canvas');
     expect(screen.queryByTestId('graph-search-console')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('graph-ribbon-tab-file'));
     fireEvent.click(screen.getByRole('button', { name: 'RAG kereső megnyitása' }));
     expect(await screen.findByTestId('graph-workspace-search-popover')).toBeVisible();
     expect(screen.getByTestId('graph-search-console')).toBeVisible();
@@ -361,7 +382,7 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     expect(ribbon).toHaveAttribute('data-minimized', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Szalag kibontása' }));
     expect(ribbon).toHaveAttribute('data-minimized', 'false');
-    fireEvent.click(screen.getByTestId('graph-ribbon-tab-tools'));
+    fireEvent.click(screen.getByTestId('graph-ribbon-tab-file'));
     fireEvent.click(screen.getByRole('button', { name: 'Ribbon személyre szabása' }));
     const customizer = await screen.findByTestId('graph-ribbon-customizer');
     fireEvent.click(within(customizer).getByRole('button', { name: /MAGENTA/i }));
@@ -370,7 +391,7 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
 
     fireEvent.click(screen.getByTestId('graph-ribbon-tab-view'));
     expect(screen.queryByRole('button', { name: 'RÉTEGEK panel megnyitása' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('graph-ribbon-tab-tools'));
+    fireEvent.click(screen.getByTestId('graph-ribbon-tab-file'));
     fireEvent.click(within(customizer).getByRole('button', { name: 'ALAPÉRTELMEZETT' }));
     fireEvent.click(screen.getByTestId('graph-ribbon-tab-view'));
     expect(screen.getByRole('button', { name: 'RÉTEGEK panel megnyitása' })).toBeInTheDocument();
@@ -386,12 +407,14 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     fireEvent.click(screen.getByTestId('graph-ribbon-tab-view'));
 
     const compactMenu = await screen.findByTestId('graph-ribbon-compact-menu');
-    expect(within(compactMenu).getByRole('button', { name: /MUNKATÉR/i })).toBeInTheDocument();
-    expect(within(compactMenu).getByRole('button', { name: /MEGJELENÍTÉS/i })).toBeInTheDocument();
+    expect(within(compactMenu).getByText('2 / FUNKCIÓCSOPORT')).toBeInTheDocument();
+    expect(within(compactMenu).getByRole('button', { name: /RÉTEGEK/i })).toBeInTheDocument();
+    expect(within(compactMenu).getByRole('button', { name: /NÉZET/i })).toBeInTheDocument();
+    expect(within(compactMenu).getByRole('button', { name: /INFORMÁCIÓ/i })).toBeInTheDocument();
     expect(within(compactMenu).getByRole('button', { name: /KAMERA/i })).toBeInTheDocument();
     expect(within(compactMenu).queryByRole('button', { name: 'RÉTEGEK panel megnyitása' })).not.toBeInTheDocument();
 
-    fireEvent.click(within(compactMenu).getByRole('button', { name: /MEGJELENÍTÉS/i }));
+    fireEvent.click(within(compactMenu).getByRole('button', { name: /RÉTEGEK/i }));
     const layersCommand = within(compactMenu).getByRole('button', { name: 'RÉTEGEK panel megnyitása' });
     fireEvent.click(layersCommand);
     expect(await screen.findByText('OBSIDIAN WIKILINK ALAPRÉTEG')).toBeInTheDocument();
@@ -399,7 +422,7 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
 
     fireEvent.click(screen.getByTestId('graph-ribbon-tab-view'));
     const reopenedCompactMenu = await screen.findByTestId('graph-ribbon-compact-menu');
-    fireEvent.click(within(reopenedCompactMenu).getByRole('button', { name: /MEGJELENÍTÉS/i }));
+    fireEvent.click(within(reopenedCompactMenu).getByRole('button', { name: /RÉTEGEK/i }));
     fireEvent.click(within(reopenedCompactMenu).getByRole('button', { name: 'RÉTEGEK panel bezárása' }));
     await waitFor(() => expect(screen.queryByText('OBSIDIAN WIKILINK ALAPRÉTEG')).not.toBeInTheDocument());
     expect(screen.queryByTestId('graph-ribbon-compact-menu')).not.toBeInTheDocument();
@@ -443,7 +466,8 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     fireEvent.click(within(adminPanelMenu).getByRole('button', { name: 'Munkatér panelmenü bezárása' }));
     fireEvent.click(screen.getByRole('button', { name: 'RÉTEGEK panel megnyitása' }));
     fireEvent.click(screen.getByLabelText('Projektgráf DB-réteg'));
-    fireEvent.click(await screen.findByRole('button', { name: 'SZERKESZTŐ panel megnyitása' }));
+    fireEvent.click(screen.getByTestId('graph-ribbon-tab-edit'));
+    fireEvent.click(await screen.findByRole('button', { name: /(?:ÚJ CSÚCS|SZERKESZTŐ) panel megnyitása/ }));
     expect(await screen.findByTestId('graph-admin-workbench')).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       `/api/admin/graphs/${encodeURIComponent(graph.id)}/nodes?limit=250`,

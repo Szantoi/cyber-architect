@@ -62,13 +62,17 @@ afterEach(() => {
 describe('CAD CUI system', () => {
   it('keeps the production ribbon, panel catalogue and local menus in one declarative registry', () => {
     const publicView = selectCadCuiCommands(GRAPH_CUI_SYSTEM, GRAPH_CUI_SYSTEM.defaultState, { surface: 'ribbon', tabId: 'view' });
+    const publicAnalysis = selectCadCuiCommands(GRAPH_CUI_SYSTEM, GRAPH_CUI_SYSTEM.defaultState, { surface: 'ribbon', tabId: 'tools' });
     const adminEdit = selectCadCuiCommands(GRAPH_CUI_SYSTEM, GRAPH_CUI_SYSTEM.defaultState, { surface: 'ribbon', tabId: 'edit', capabilities: { admin: true } });
     const nodeMenu = selectCadCuiCommands(GRAPH_CUI_SYSTEM, GRAPH_CUI_SYSTEM.defaultState, { surface: 'context', menuId: 'node' });
 
     expect(GRAPH_CUI_SYSTEM.panels.map(panel => panel.id)).toEqual(expect.arrayContaining(['graph-explorer-panel', 'graph-layers-panel', 'graph-flow-panel', 'graph-properties-panel', 'graph-admin-panel']));
-    expect(publicView.map(command => command.id)).toEqual(['workspace.panels', 'workspace.search', 'view.layers', 'view.xyflow', 'view.inspector', 'analysis.traversal', 'workspace.toggle-fullscreen']);
-    expect(publicView.map(command => command.placement.group)).toEqual(['MUNKATÉR', 'MUNKATÉR', 'MEGJELENÍTÉS', 'MEGJELENÍTÉS', 'MEGJELENÍTÉS', 'MEGJELENÍTÉS', 'KAMERA']);
-    expect(adminEdit.map(command => command.id)).toEqual(['workspace.panels', 'editor.open', 'editor.connect', 'view.inspector', 'analysis.traversal']);
+    expect(GRAPH_CUI_SYSTEM.tabs.map(tab => tab.id)).toEqual(['view', 'tools', 'edit', 'ai', 'integrations', 'file']);
+    expect(GRAPH_CUI_SYSTEM.tabs.slice(0, 3).map(tab => tab.label)).toEqual(['MEGJELENÍTÉS', 'ELEMZÉS', 'SZERKESZTÉS']);
+    expect(publicView.map(command => command.id)).toEqual(['view.layers', 'view.xyflow', 'view.inspector', 'workspace.toggle-fullscreen']);
+    expect(publicView.map(command => command.placement.group)).toEqual(['RÉTEGEK', 'NÉZET', 'INFORMÁCIÓ', 'KAMERA']);
+    expect(publicAnalysis.map(command => command.id)).toEqual(['analysis.traversal']);
+    expect(adminEdit.map(command => command.id)).toEqual(['editor.open', 'editor.connect', 'view.inspector']);
     expect(nodeMenu.map(command => command.label)).toEqual(['TULAJDONSÁGOK', 'RÉTEGVEREM', 'ÚTVONALAK', 'PANELEK']);
   });
 
