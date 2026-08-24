@@ -156,6 +156,32 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     expect(within(commandCenter).getByRole('button', { name: /VISSZAÁLLÍTÁS/i })).not.toBeDisabled();
   });
 
+  it('keeps panels closed until the app-bar CAD menu explicitly shows, docks or floats them', async () => {
+    const fetchMock = mockGraphApi();
+    vi.stubGlobal('fetch', fetchMock);
+    renderGraph(<KnowledgeGraphPage />);
+
+    await screen.findByTestId('graph-canvas');
+    expect(screen.queryByRole('dialog', { name: 'Munkatér panelek' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('graph-document-explorer')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('workspace-panel-customizer-trigger'));
+    const menu = await screen.findByRole('dialog', { name: 'Munkatér panelek' });
+    expect(within(menu).getByText('PUBLIKUS')).toBeInTheDocument();
+    expect(within(menu).getByRole('button', { name: 'Show EXPLORER' })).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(within(menu).getByRole('button', { name: 'Show EXPLORER' }));
+    expect(await screen.findByTestId('graph-document-explorer')).toBeInTheDocument();
+    await waitFor(() => expect(within(menu).getByRole('button', { name: 'Hide EXPLORER' })).toHaveAttribute('aria-pressed', 'true'));
+
+    fireEvent.click(within(menu).getByRole('button', { name: 'Float EXPLORER' }));
+    await waitFor(() => expect(within(menu).getByRole('button', { name: 'Float EXPLORER' })).toHaveAttribute('aria-pressed', 'true'));
+
+    fireEvent.click(within(menu).getByRole('button', { name: 'Hide EXPLORER' }));
+    await waitFor(() => expect(screen.queryByTestId('graph-document-explorer')).not.toBeInTheDocument());
+    expect(JSON.parse(localStorage.getItem('graph-cad:public:panels'))['graph-explorer-panel']).toMatchObject({ open: false, placement: 'float' });
+  });
+
   it('creates and switches independently persisted workspace profiles from the layout tab bar', async () => {
     const fetchMock = mockGraphApi();
     vi.stubGlobal('fetch', fetchMock);
@@ -352,6 +378,9 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
 
   it('reveals the direct workbench only after a verified administrator session', async () => {
     localStorage.setItem('cyber_admin_token', 'verified-admin-token');
+    localStorage.setItem('graph-cad:public:panels', JSON.stringify({
+      'graph-explorer-panel': { open: false, placement: 'float' }
+    }));
     const publicApi = mockGraphApi();
     const fetchMock = vi.fn(async (url, options = {}) => {
       if (url === '/api/admin/session') return response({ authenticated: true, role: 'OVERSEER_ADMIN' });
@@ -367,6 +396,12 @@ describe('KnowledgeGraphPage wikilink base with DB overlays', () => {
     await screen.findByTestId('graph-canvas');
     expect(screen.getByTestId('graph-app-bar')).toHaveAttribute('data-admin-active', 'true');
     expect(screen.queryByTestId('graph-admin-mode-badge')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('workspace-panel-customizer-trigger'));
+    const adminPanelMenu = await screen.findByRole('dialog', { name: 'Munkatér panelek' });
+    expect(within(adminPanelMenu).getByText('ADMIN')).toBeInTheDocument();
+    expect(within(adminPanelMenu).getByRole('button', { name: 'Dock EXPLORER' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(adminPanelMenu).getByRole('button', { name: 'Float EXPLORER' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(within(adminPanelMenu).getByRole('button', { name: 'Munkatér panelmenü bezárása' }));
     fireEvent.click(screen.getByRole('button', { name: 'RÉTEGEK panel megnyitása' }));
     fireEvent.click(screen.getByLabelText('Projektgráf DB-réteg'));
     fireEvent.click(await screen.findByRole('button', { name: 'SZERKESZTŐ panel megnyitása' }));

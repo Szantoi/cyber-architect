@@ -13,5 +13,6 @@ export {
   CadSegmentTabs,
   CadStatGrid,
   CadToolButton,
+  CadWorkspacePanelManager,
   CadWorkspaceProfileTabs
 } from '@szantoi/cad-cui-system';

@@ -3,11 +3,12 @@ import { BookOpen, Check, ChevronDown, ChevronUp, FileText, FolderTree, Layers3,
 import { DockviewReact, themeDark } from 'dockview-react';
 import 'dockview-react/dist/styles/dockview.css';
 import { Link } from 'react-router-dom';
+import { createCadWorkspacePanelPreferencesKey } from '@szantoi/cad-cui-system';
 import SharedKnowledgeMeshExplorer from './SharedKnowledgeMeshExplorer.jsx';
 import GraphLayerOverlay from './GraphLayerOverlay.jsx';
 import GraphInlineEditor from './GraphInlineEditor.jsx';
 import DirectedMultigraphCanvas from './DirectedMultigraphCanvas.jsx';
-import { CadActionButton, CadDataRow, CadEmptyState, CadIconButton, CadPanelFooter, CadPanelHeader, CadPanelSection, CadPanelShell, CadSegmentTabs, CadStatGrid, CadToolButton, CadWorkspaceProfileTabs } from './ui/GraphCadUi.jsx';
+import { CadActionButton, CadDataRow, CadEmptyState, CadIconButton, CadPanelFooter, CadPanelHeader, CadPanelSection, CadPanelShell, CadSegmentTabs, CadStatGrid, CadToolButton, CadWorkspacePanelManager, CadWorkspaceProfileTabs } from './ui/GraphCadUi.jsx';
 import { CAD_CONTENT_DETAILS, CAD_CONTENT_DENSITIES, DEFAULT_CAD_CONTENT_PREFERENCES, DEFAULT_RIBBON_PREFERENCES, GRAPH_CUI_SYSTEM, RIBBON_ACCENT_MODES, RIBBON_TABS, RIBBON_TOOL_OPTIONS, selectCadCuiCommands } from './ui/CadCuiSystem.jsx';
 import { boundPostId } from '../../utils/graphLayerAdapter.js';
 import { groupGraphDocumentsByFolder, normalizeGraphDocument } from '../../utils/graphFilters.js';
@@ -21,6 +22,7 @@ const WORKSPACE_MANAGER_PANEL_ID = 'graph-workspace-manager-panel';
 const WORKSPACE_LAYOUT_PREFERENCE_KEY = 'graph-workspace-layout:v2';
 const WORKSPACE_LAYOUTS_PREFERENCE_KEY = 'graph-workspace-layouts:v1';
 const DEFAULT_WORKSPACE_LAYOUT_ID = 'model';
+const WORKSPACE_PREFERENCE_NAMESPACE = 'graph-cad';
 const WORKSPACE_PANELS = Object.freeze({
   [MODEL_PANEL_ID]: { component: 'modelSpace', title: 'MODELTÉR', locked: true, width: 960, height: 680, defaultPlacement: 'root', icon: Network, accent: '#00fbfb' },
   [WORKSPACE_MANAGER_PANEL_ID]: { component: 'workspaceManager', title: 'PANELEK', width: 486, height: 610, defaultPlacement: 'floating', icon: PanelsTopLeft, accent: '#00fbfb', utility: true },
@@ -32,6 +34,16 @@ const WORKSPACE_PANELS = Object.freeze({
   'graph-properties-panel': { component: 'properties', title: 'INSPEKTOR', width: 342, height: 520, defaultPlacement: 'right', icon: Settings2, accent: '#4bc8ff' },
   'graph-traversal-panel': { component: 'traversal', title: 'ÚTVONALAK', width: 430, height: 570, defaultPlacement: 'floating', icon: Route, accent: '#80ff00' },
   'graph-admin-panel': { component: 'admin', title: 'SZERKESZTŐ', width: 430, height: 660, defaultPlacement: 'floating', icon: Network, accent: '#ff00ff', adminOnly: true }
+});
+const WORKSPACE_PANEL_DESCRIPTIONS = Object.freeze({
+  'graph-search-panel': 'Cikk- és tudástárkeresés',
+  'graph-ribbon-panel': 'Szalag és tartalmi profilok',
+  'graph-explorer-panel': 'Dokumentum- és projektstruktúra',
+  'graph-layers-panel': 'Adatbázis-rétegek és jelölések',
+  'graph-flow-panel': 'XYFlow csomópont- és kapcsolatnézet',
+  'graph-properties-panel': 'Kiválasztott elem tulajdonságai',
+  'graph-traversal-panel': 'Kapcsolatok és útvonalak elemzése',
+  'graph-admin-panel': 'Admin szerkesztői munkapad'
 });
 const FLOATING_PANEL_POSITIONS = Object.freeze({
   [WORKSPACE_MANAGER_PANEL_ID]: { x: 92, y: 48 },
@@ -50,6 +62,34 @@ const text = value => String(value ?? '').trim();
 const safeColor = value => /^#[0-9a-f]{6}$/i.test(text(value)) ? value : '#00fbfb';
 const encodePath = value => encodeURIComponent(String(value || ''));
 const formatNumber = value => new Intl.NumberFormat('hu-HU').format(Number(value || 0));
+const workspacePreferenceScope = isAdminPreview => isAdminPreview ? 'admin' : 'public';
+const scopedWorkspacePreferenceKey = (key, scope) => scope === 'public' ? key : `${key}:${scope}`;
+const workspaceLayoutPreferenceKey = scope => scopedWorkspacePreferenceKey(WORKSPACE_LAYOUTS_PREFERENCE_KEY, scope);
+const ribbonPreferenceKey = scope => scopedWorkspacePreferenceKey(RIBBON_PREFERENCE_KEY, scope);
+const cadContentPreferenceKey = scope => scopedWorkspacePreferenceKey(CAD_CONTENT_PREFERENCE_KEY, scope);
+const workspacePanelPreferenceKey = scope => createCadWorkspacePanelPreferencesKey({
+  namespace: WORKSPACE_PREFERENCE_NAMESPACE,
+  scope,
+  section: 'panels'
+});
+const workspacePanelPreferencePlacement = value => value === 'floating' || value === 'float' ? 'float' : 'dock';
+const workspacePanelDockPlacement = panelId => {
+  const placement = WORKSPACE_PANELS[panelId]?.defaultPlacement;
+  return ['left', 'right', 'bottom'].includes(placement) ? placement : 'right';
+};
+const workspacePanelDockviewPlacement = (panelId, placement) => workspacePanelPreferencePlacement(placement) === 'float'
+  ? 'floating'
+  : workspacePanelDockPlacement(panelId);
+const readWorkspacePanelPreferences = scope => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const stored = window.localStorage.getItem(workspacePanelPreferenceKey(scope));
+    const value = stored ? JSON.parse(stored) : {};
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+};
 const defaultWorkspaceLayoutProfile = () => ({ id: DEFAULT_WORKSPACE_LAYOUT_ID, name: 'MODEL', snapshot: null, system: true });
 const workspaceLayoutId = value => {
   const normalized = text(value).toLocaleLowerCase('hu-HU');
@@ -76,13 +116,13 @@ const normalizeWorkspaceLayouts = value => {
     : DEFAULT_WORKSPACE_LAYOUT_ID;
   return { activeId, profiles };
 };
-const readWorkspaceLayouts = () => {
+const readWorkspaceLayouts = (scope = 'public') => {
   const fallback = normalizeWorkspaceLayouts({});
   if (typeof window === 'undefined') return fallback;
   try {
-    const stored = window.localStorage.getItem(WORKSPACE_LAYOUTS_PREFERENCE_KEY);
+    const stored = window.localStorage.getItem(workspaceLayoutPreferenceKey(scope));
     if (stored) return normalizeWorkspaceLayouts(JSON.parse(stored));
-    const legacy = window.localStorage.getItem(WORKSPACE_LAYOUT_PREFERENCE_KEY);
+    const legacy = scope === 'public' ? window.localStorage.getItem(WORKSPACE_LAYOUT_PREFERENCE_KEY) : null;
     const snapshot = legacy ? JSON.parse(legacy) : null;
     return normalizeWorkspaceLayouts({ profiles: [{ ...defaultWorkspaceLayoutProfile(), snapshot }] });
   } catch {
@@ -108,10 +148,10 @@ const workspaceFloatingPosition = (panelId, size) => {
   };
 };
 
-const readRibbonPreferences = () => {
+const readRibbonPreferences = (scope = 'public') => {
   if (typeof window === 'undefined') return DEFAULT_RIBBON_PREFERENCES;
   try {
-    const stored = JSON.parse(window.localStorage.getItem(RIBBON_PREFERENCE_KEY) || '{}');
+    const stored = JSON.parse(window.localStorage.getItem(ribbonPreferenceKey(scope)) || '{}');
     const allowedToolIds = new Set(RIBBON_TOOL_OPTIONS.map(tool => tool.id));
     const allowedAccentModes = new Set(RIBBON_ACCENT_MODES.map(mode => mode.id));
     return {
@@ -124,10 +164,10 @@ const readRibbonPreferences = () => {
   }
 };
 
-const readCadContentPreferences = () => {
+const readCadContentPreferences = (scope = 'public') => {
   if (typeof window === 'undefined') return DEFAULT_CAD_CONTENT_PREFERENCES;
   try {
-    const stored = JSON.parse(window.localStorage.getItem(CAD_CONTENT_PREFERENCE_KEY) || '{}');
+    const stored = JSON.parse(window.localStorage.getItem(cadContentPreferenceKey(scope)) || '{}');
     const densities = new Set(CAD_CONTENT_DENSITIES.map(option => option.id));
     const details = new Set(CAD_CONTENT_DETAILS.map(option => option.id));
     return {
@@ -667,6 +707,42 @@ function GraphCadRibbon({ activeLayerCount, isAdminPreview, isWorkspaceFullscree
   );
 }
 
+function GraphWorkspacePanelMenu() {
+  const workspace = useGraphWorkspace();
+  const scopeLabel = workspace.preferenceScope === 'admin' ? 'ADMIN' : 'PUBLIKUS';
+  return (
+    <CadWorkspacePanelManager
+      data-testid="graph-workspace-panel-menu"
+      className="graph-application-bar__workspace-menu"
+      panels={workspace.workspacePanelDefinitions}
+      value={workspace.workspacePanelPreferences}
+      onChange={workspace.persistWorkspacePanelPreferences}
+      onPanelOpen={workspace.openWorkspacePanelFromPreferences}
+      onPanelClose={panel => workspace.closeWorkspacePanel(panel.id)}
+      onPanelDock={workspace.dockWorkspacePanelFromPreferences}
+      onPanelFloat={workspace.floatWorkspacePanelFromPreferences}
+      onPanelReset={panel => workspace.resetWorkspacePanel(panel.id)}
+      onResetAll={() => workspace.resetWorkspaceLayout()}
+      title="Munkatér panelek"
+      description="Csak itt, közvetlenül válaszd ki a megjelenő eszközablakokat és a dokkolásukat."
+      scope={scopeLabel}
+      triggerLabel="Munkatér panelek"
+      closeLabel="Munkatér panelmenü bezárása"
+      resetAllLabel="GYÁRI MUNKATÉR"
+      emptyLabel="Ebben a nézetben nincs testreszabható eszközablak."
+      placement="bottom-end"
+      renderTrigger={({ visibleCount, floatingCount }) => <button
+        type="button"
+        data-testid="workspace-panel-customizer-trigger"
+        data-floating-panels={floatingCount}
+        aria-label="Munkatér panelek megjelenítése és elhelyezése"
+        title="Panelek közvetlen megjelenítése, dokkolása vagy lebegtetése"
+        className="graph-application-bar__panel-toggle graph-application-bar__panel-customizer-trigger"
+      ><PanelsTopLeft size={13} aria-hidden="true" /><span>PANELEK</span><output aria-label={`${visibleCount} nyitott munkatérpanel`}>{visibleCount}</output></button>}
+    />
+  );
+}
+
 function GraphApplicationBar({ canPreview, isAdminPreview, onTogglePreview, onOpenPanels }) {
   const isAdminActive = Boolean(canPreview && isAdminPreview);
   return (
@@ -678,7 +754,8 @@ function GraphApplicationBar({ canPreview, isAdminPreview, onTogglePreview, onOp
       </Link>
       <div className="graph-application-bar__context" aria-hidden="true"><span />TUDÁSGRÁF <i>//</i> MODELTÉR</div>
       <div className="graph-application-bar__controls">
-        <button type="button" data-testid="workspace-panel-launcher" aria-label="Munkatér panelkezelő megnyitása" title="Panelek és elrendezések" onClick={onOpenPanels} className="graph-application-bar__panel-toggle"><PanelsTopLeft size={13} aria-hidden="true" /><span>PANELEK</span></button>
+        <GraphWorkspacePanelMenu />
+        <button type="button" data-testid="workspace-panel-launcher" aria-label="Munkatér panelkezelő megnyitása" title="Haladó panelek és elrendezések" onClick={onOpenPanels} className="graph-application-bar__panel-toggle graph-application-bar__panel-launcher"><MoreHorizontal size={13} aria-hidden="true" /><span>HALADÓ</span></button>
         {canPreview && <button type="button" data-testid="admin-view-toggle" aria-pressed={isAdminActive} aria-label={isAdminActive ? 'Publikus nézetre váltás' : 'Admin nézetre váltás'} title={isAdminActive ? 'Publikus nézetre váltás' : 'Admin nézetre váltás'} onClick={onTogglePreview} className="graph-application-bar__admin-toggle">
           <ShieldCheck size={13} aria-hidden="true" />
           <span>{isAdminActive ? 'ADMIN AKTÍV' : 'PUBLIKUS'}</span>
@@ -724,6 +801,7 @@ function GraphQuickActionMenu({ action, isAdminPreview, onClose, onOpenPanel }) 
 
 const KnowledgeGraphPage = () => {
   const { viewerFetch, isAdminPreview, canPreview, enterAdminPreview, exitAdminPreview } = useAdminPreview();
+  const preferenceScope = workspacePreferenceScope(isAdminPreview);
   const [graphs, setGraphs] = useState(EMPTY_LIST);
   const [activeLayerIds, setActiveLayerIds] = useState(EMPTY_LIST);
   const [snapshots, setSnapshots] = useState({});
@@ -744,12 +822,15 @@ const KnowledgeGraphPage = () => {
   const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false);
   const [workspaceSearchExpanded, setWorkspaceSearchExpanded] = useState(true);
   const [workspaceSearchHost, setWorkspaceSearchHost] = useState(null);
-  const [ribbonPreferences, setRibbonPreferences] = useState(readRibbonPreferences);
-  const [cadContentPreferences, setCadContentPreferences] = useState(readCadContentPreferences);
+  const [ribbonPreferences, setRibbonPreferences] = useState(() => readRibbonPreferences(preferenceScope));
+  const [cadContentPreferences, setCadContentPreferences] = useState(() => readCadContentPreferences(preferenceScope));
+  const [workspacePanelPreferenceState, setWorkspacePanelPreferenceState] = useState(() => readWorkspacePanelPreferences(preferenceScope));
+  const [preferenceScopeHydrated, setPreferenceScopeHydrated] = useState(preferenceScope);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
-  const [workspaceLayouts, setWorkspaceLayouts] = useState(readWorkspaceLayouts);
+  const [workspaceLayouts, setWorkspaceLayouts] = useState(() => readWorkspaceLayouts(preferenceScope));
   const workspaceApiRef = useRef(null);
   const workspaceLayoutsRef = useRef(workspaceLayouts);
+  const workspacePanelPreferencesRef = useRef(workspacePanelPreferenceState);
   const workspaceDisposablesRef = useRef(EMPTY_LIST);
   const isRestoringWorkspaceLayoutRef = useRef(false);
   const workspaceFrameRef = useRef(null);
@@ -785,20 +866,44 @@ const KnowledgeGraphPage = () => {
   }, []);
   const resetCadContentPreferences = useCallback(() => setCadContentPreferences(DEFAULT_CAD_CONTENT_PREFERENCES), []);
   useEffect(() => {
+    if (preferenceScopeHydrated !== preferenceScope) return;
     try {
-      window.localStorage.setItem(RIBBON_PREFERENCE_KEY, JSON.stringify(ribbonPreferences));
+      window.localStorage.setItem(ribbonPreferenceKey(preferenceScope), JSON.stringify(ribbonPreferences));
     } catch {
       // A szalag a következő látogatáskor gyári kiosztással indul, ha a böngésző nem enged tárolást.
     }
-  }, [ribbonPreferences]);
+  }, [preferenceScope, preferenceScopeHydrated, ribbonPreferences]);
 
   useEffect(() => {
+    if (preferenceScopeHydrated !== preferenceScope) return;
     try {
-      window.localStorage.setItem(CAD_CONTENT_PREFERENCE_KEY, JSON.stringify(cadContentPreferences));
+      window.localStorage.setItem(cadContentPreferenceKey(preferenceScope), JSON.stringify(cadContentPreferences));
     } catch {
       // A tartalmi nézet a következő látogatáskor alapértékekkel indul, ha nincs írható tárhely.
     }
-  }, [cadContentPreferences]);
+  }, [cadContentPreferences, preferenceScope, preferenceScopeHydrated]);
+
+  const persistWorkspacePanelPreferences = useCallback(nextValue => {
+    const value = nextValue && typeof nextValue === 'object' && !Array.isArray(nextValue) ? nextValue : {};
+    workspacePanelPreferencesRef.current = value;
+    setWorkspacePanelPreferenceState(value);
+    if (preferenceScopeHydrated !== preferenceScope) return value;
+    try {
+      window.localStorage.setItem(workspacePanelPreferenceKey(preferenceScope), JSON.stringify(value));
+    } catch {
+      setError('PANEL_BEÁLLÍTÁSI_HIBA: a böngésző nem adott írható tárhelyet.');
+    }
+    return value;
+  }, [preferenceScope, preferenceScopeHydrated]);
+
+  const patchWorkspacePanelPreference = useCallback((panelId, patch) => {
+    if (!WORKSPACE_PANELS[panelId] || panelId === MODEL_PANEL_ID) return workspacePanelPreferencesRef.current;
+    const current = workspacePanelPreferencesRef.current;
+    return persistWorkspacePanelPreferences({
+      ...current,
+      [panelId]: { ...(current[panelId] || {}), ...patch }
+    });
+  }, [persistWorkspacePanelPreferences]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -1064,10 +1169,19 @@ const KnowledgeGraphPage = () => {
   }, [isAdminPreview]);
 
   const openWorkspacePanel = useCallback((panelId, placement) => {
-    const panel = addWorkspacePanel(panelId, placement);
+    const storedPlacement = workspacePanelPreferencesRef.current?.[panelId]?.placement;
+    const resolvedPlacement = placement || (storedPlacement ? workspacePanelDockviewPlacement(panelId, storedPlacement) : undefined);
+    const panel = addWorkspacePanel(panelId, resolvedPlacement);
+    const configuration = WORKSPACE_PANELS[panelId];
+    if (panel && configuration && !configuration.utility && panelId !== MODEL_PANEL_ID) {
+      patchWorkspacePanelPreference(panelId, {
+        open: true,
+        placement: workspacePanelPreferencePlacement(normalizePanelLocation(panel.api.location))
+      });
+    }
     syncWorkspaceState();
     return panel;
-  }, [addWorkspacePanel, syncWorkspaceState]);
+  }, [addWorkspacePanel, patchWorkspacePanelPreference, syncWorkspaceState]);
 
   const placeWorkspacePanel = useCallback((panelId, placement) => {
     const api = workspaceApiRef.current;
@@ -1086,9 +1200,15 @@ const KnowledgeGraphPage = () => {
       }
     }
     panel.api.setActive();
+    if (!configuration.utility) {
+      patchWorkspacePanelPreference(panelId, {
+        open: true,
+        placement: workspacePanelPreferencePlacement(normalizePanelLocation(panel.api.location))
+      });
+    }
     syncWorkspaceState();
     return panel;
-  }, [addWorkspacePanel, isAdminPreview, syncWorkspaceState]);
+  }, [addWorkspacePanel, isAdminPreview, patchWorkspacePanelPreference, syncWorkspaceState]);
 
   const resetWorkspacePanel = useCallback(panelId => {
     const configuration = WORKSPACE_PANELS[panelId];
@@ -1097,17 +1217,29 @@ const KnowledgeGraphPage = () => {
     syncWorkspaceState();
   }, [placeWorkspacePanel, syncWorkspaceState]);
 
+  const closeWorkspacePanel = useCallback(panelId => {
+    const api = workspaceApiRef.current;
+    const configuration = WORKSPACE_PANELS[panelId];
+    if (!api || !configuration || configuration.locked || (configuration.adminOnly && !isAdminPreview)) return false;
+    const panel = api.getPanel(panelId);
+    if (!panel) return false;
+    panel.api.close();
+    if (!configuration.utility) patchWorkspacePanelPreference(panelId, { open: false });
+    syncWorkspaceState();
+    return true;
+  }, [isAdminPreview, patchWorkspacePanelPreference, syncWorkspaceState]);
+
   const commitWorkspaceLayouts = useCallback(nextLayouts => {
     const normalized = normalizeWorkspaceLayouts(nextLayouts);
     workspaceLayoutsRef.current = normalized;
     setWorkspaceLayouts(normalized);
     try {
-      window.localStorage.setItem(WORKSPACE_LAYOUTS_PREFERENCE_KEY, JSON.stringify(normalized));
+      window.localStorage.setItem(workspaceLayoutPreferenceKey(preferenceScope), JSON.stringify(normalized));
     } catch {
       setError('MUNKATÉR_MENTÉSI_HIBA: a böngésző nem adott írható tárhelyet.');
     }
     return normalized;
-  }, []);
+  }, [preferenceScope]);
 
   const captureWorkspaceSnapshot = useCallback(() => {
     const api = workspaceApiRef.current;
@@ -1157,6 +1289,21 @@ const KnowledgeGraphPage = () => {
       syncWorkspaceState();
     }
   }, [addWorkspacePanel, isAdminPreview, syncWorkspaceState]);
+
+  useEffect(() => {
+    if (preferenceScopeHydrated === preferenceScope) return;
+    const nextPanelPreferences = readWorkspacePanelPreferences(preferenceScope);
+    const nextLayouts = readWorkspaceLayouts(preferenceScope);
+    workspacePanelPreferencesRef.current = nextPanelPreferences;
+    workspaceLayoutsRef.current = nextLayouts;
+    setWorkspacePanelPreferenceState(nextPanelPreferences);
+    setRibbonPreferences(readRibbonPreferences(preferenceScope));
+    setCadContentPreferences(readCadContentPreferences(preferenceScope));
+    setWorkspaceLayouts(nextLayouts);
+    setPreferenceScopeHydrated(preferenceScope);
+    const activeProfile = nextLayouts.profiles.find(profile => profile.id === nextLayouts.activeId);
+    applyWorkspaceLayout(activeProfile?.snapshot || null);
+  }, [applyWorkspaceLayout, preferenceScope, preferenceScopeHydrated]);
 
   const saveWorkspaceLayout = useCallback(() => {
     const nextLayouts = snapshotActiveWorkspace();
@@ -1262,6 +1409,46 @@ const KnowledgeGraphPage = () => {
       };
     }), [isAdminPreview, workspaceRevision]);
 
+  const workspacePanelDefinitions = useMemo(() => workspacePanelStates.map(panel => {
+    const configuration = WORKSPACE_PANELS[panel.id] || {};
+    return {
+      id: panel.id,
+      label: panel.title,
+      description: WORKSPACE_PANEL_DESCRIPTIONS[panel.id] || 'CAD eszközablak',
+      icon: panel.icon ? React.createElement(panel.icon, { size: 13, 'aria-hidden': true }) : undefined,
+      accent: panel.accent,
+      defaultOpen: false,
+      defaultPlacement: workspacePanelPreferencePlacement(configuration.defaultPlacement),
+      placements: ['dock', 'float'],
+      closable: true
+    };
+  }), [workspacePanelStates]);
+
+  const workspacePanelPreferences = useMemo(() => workspacePanelStates.reduce((preferences, panel) => {
+    const stored = workspacePanelPreferenceState[panel.id] || {};
+    const configuration = WORKSPACE_PANELS[panel.id] || {};
+    preferences[panel.id] = {
+      ...stored,
+      open: panel.isOpen,
+      placement: panel.isOpen
+        ? workspacePanelPreferencePlacement(panel.location)
+        : workspacePanelPreferencePlacement(stored.placement || configuration.defaultPlacement)
+    };
+    return preferences;
+  }, { ...workspacePanelPreferenceState }), [workspacePanelPreferenceState, workspacePanelStates]);
+
+  const openWorkspacePanelFromPreferences = useCallback((panel, preference) => {
+    openWorkspacePanel(panel.id, workspacePanelDockviewPlacement(panel.id, preference.placement));
+  }, [openWorkspacePanel]);
+
+  const dockWorkspacePanelFromPreferences = useCallback((panel, preference) => {
+    if (preference.open) placeWorkspacePanel(panel.id, workspacePanelDockPlacement(panel.id));
+  }, [placeWorkspacePanel]);
+
+  const floatWorkspacePanelFromPreferences = useCallback((panel, preference) => {
+    if (preference.open) placeWorkspacePanel(panel.id, 'floating');
+  }, [placeWorkspacePanel]);
+
   const workspaceValue = useMemo(() => ({
     graphs,
     documents,
@@ -1305,7 +1492,15 @@ const KnowledgeGraphPage = () => {
     openWorkspacePanel,
     placeWorkspacePanel,
     resetWorkspacePanel,
+    closeWorkspacePanel,
     workspacePanelStates,
+    workspacePanelDefinitions,
+    workspacePanelPreferences,
+    persistWorkspacePanelPreferences,
+    openWorkspacePanelFromPreferences,
+    dockWorkspacePanelFromPreferences,
+    floatWorkspacePanelFromPreferences,
+    preferenceScope,
     workspaceLayouts,
     activeWorkspaceLayout,
     saveWorkspaceLayout,
@@ -1319,7 +1514,7 @@ const KnowledgeGraphPage = () => {
     chooseNode,
     chooseEdge,
     beginRelationship
-  }), [activeLayerIds, activeWorkspaceLayout, beginRelationship, cadContentPreferences, chooseEdge, chooseNode, createWorkspaceLayout, dismissQuickAction, documents, graphs, hasSavedWorkspaceLayout, isAdminPreview, isWorkspaceFullscreen, loadDocuments, loadingCatalog, loadingDocuments, loadingLayerIds, openWorkspacePanel, placeWorkspacePanel, query, refreshGraphData, renderCanvasOverlay, renameWorkspaceLayout, resetCadContentPreferences, resetRibbonPreferences, resetWorkspaceLayout, resetWorkspacePanel, restoreWorkspaceLayout, ribbonPreferences, runTraversal, runningTraversal, saveWorkspaceLayout, selectedEdge, selectedGraph, selectedNode, selectedNodeId, selectedSnapshot, selectBaseDocument, setCadContentDensity, setCadContentDetail, setRibbonAccentMode, switchWorkspaceLayout, toggleLayer, toggleRibbonMinimized, toggleRibbonTool, toggleWorkspaceFullscreen, traversal, workspaceLayouts, workspacePanelStates, workspaceSearchExpanded, workspaceSearchHost, workspaceSearchOpen]);
+  }), [activeLayerIds, activeWorkspaceLayout, beginRelationship, cadContentPreferences, chooseEdge, chooseNode, closeWorkspacePanel, createWorkspaceLayout, dismissQuickAction, dockWorkspacePanelFromPreferences, documents, floatWorkspacePanelFromPreferences, graphs, hasSavedWorkspaceLayout, isAdminPreview, isWorkspaceFullscreen, loadDocuments, loadingCatalog, loadingDocuments, loadingLayerIds, openWorkspacePanel, openWorkspacePanelFromPreferences, persistWorkspacePanelPreferences, placeWorkspacePanel, preferenceScope, query, refreshGraphData, renderCanvasOverlay, renameWorkspaceLayout, resetCadContentPreferences, resetRibbonPreferences, resetWorkspaceLayout, resetWorkspacePanel, restoreWorkspaceLayout, ribbonPreferences, runTraversal, runningTraversal, saveWorkspaceLayout, selectedEdge, selectedGraph, selectedNode, selectedNodeId, selectedSnapshot, selectBaseDocument, setCadContentDensity, setCadContentDetail, setRibbonAccentMode, switchWorkspaceLayout, toggleLayer, toggleRibbonMinimized, toggleRibbonTool, toggleWorkspaceFullscreen, traversal, workspaceLayouts, workspacePanelDefinitions, workspacePanelPreferences, workspacePanelStates, workspaceSearchExpanded, workspaceSearchHost, workspaceSearchOpen]);
 
   const workspaceComponents = useMemo(() => ({
     modelSpace: GraphModelSpacePanel,

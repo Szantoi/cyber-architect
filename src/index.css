@@ -843,6 +843,42 @@ body {
   background: rgba(0, 251, 251, 0.055);
 }
 
+.graph-application-bar__workspace-menu {
+  --cad-panel-manager-accent: var(--graph-app-accent);
+  --cad-panel-manager-bg: #08131f;
+  --cad-panel-manager-raised: #102131;
+  --cad-panel-manager-inset: #040b13;
+  --cad-panel-manager-border: color-mix(in srgb, var(--graph-app-accent) 36%, rgba(148, 163, 184, 0.22));
+  --cad-panel-manager-muted: #98aabc;
+  flex: 0 0 auto;
+}
+
+.graph-application-bar__panel-customizer-trigger {
+  position: relative;
+  min-width: 4.72rem;
+}
+
+.graph-application-bar__panel-customizer-trigger > output {
+  display: grid;
+  min-width: 0.92rem;
+  height: 0.92rem;
+  place-items: center;
+  border: 1px solid currentColor;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.2);
+  font: 900 0.39rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.graph-application-bar__workspace-menu .cad-workspace-panel-manager__surface {
+  box-shadow: 0 0.8rem 2.2rem rgba(0, 0, 0, 0.56), 0 0 1.5rem color-mix(in srgb, var(--graph-app-accent) 8%, transparent);
+}
+
+.graph-application-bar__panel-launcher {
+  color: #8ba0b3;
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.045);
+}
+
 .graph-application-bar__panel-toggle:hover,
 .graph-application-bar__panel-toggle:focus-visible,
 .graph-application-bar__admin-toggle:hover,
